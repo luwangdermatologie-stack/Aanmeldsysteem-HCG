@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "patient": {
+      "title": "Patient",
+      "description": "Patient check-in data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "birthDate": { "type": "string" },
+        "nationalRegistryNum": { "type": "string" },
+        "idCardNum": { "type": "string" },
+        "appointmentTime": { "type": "string" },
+        "doctorId": { "type": "string" },
+        "doctorName": { "type": "string" },
+        "hasAppointment": { "type": "boolean" },
+        "flowType": { "type": "string" },
+        "arrivalTime": { "type": "string" },
+        "arrivalDate": { "type": "string" },
+        "waitingRoom": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "firstName", "lastName", "birthDate", "nationalRegistryNum", "hasAppointment", "flowType", "arrivalTime", "arrivalDate", "waitingRoom", "status"]
+    },
+    "doctor": {
+      "title": "Doctor",
+      "description": "Dermatologist profile and room",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "specialty": { "type": "string" },
+        "waitingRoom": { "type": "string" },
+        "isAvailable": { "type": "boolean" },
+        "avatarColor": { "type": "string" }
+      },
+      "required": ["id", "name", "specialty", "waitingRoom", "isAvailable", "avatarColor"]
+    },
+    "activeStaff": {
+      "title": "ActiveStaff",
+      "description": "Desk staff member profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" }
+      },
+      "required": ["id", "name", "role"]
+    },
+    "systemConfig": {
+      "title": "SystemConfig",
+      "description": "System operational configuration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "currentDagdeel": { "type": "string" },
+        "activeStaffId": { "type": "string" },
+        "teamsWebhookUrl": { "type": "string" }
+      },
+      "required": ["id", "currentDagdeel", "activeStaffId", "teamsWebhookUrl"]
+    },
+    "teamsNotification": {
+      "title": "TeamsNotification",
+      "description": "Notification sent to MS Teams channel",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "targetDoctor": { "type": "string" },
+        "targetStaff": { "type": "string" },
+        "payload": { "type": "object" },
+        "status": { "type": "string" },
+        "messagePreview": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "status", "messagePreview"]
+    }
+  },
+  "firestore": {
+    "patients": {
+      "schema": "patient",
+      "description": "Live and archived patients collection"
+    },
+    "doctors": {
+      "schema": "doctor",
+      "description": "Dermatologists setup"
+    },
+    "staff": {
+      "schema": "activeStaff",
+      "description": "Reception staff setup"
+    },
+    "config": {
+      "schema": "systemConfig",
+      "description": "Active system settings document"
+    },
+    "notifications": {
+      "schema": "teamsNotification",
+      "description": "Audit trail of Teams notifications sent"
+    }
+  }
+}
