@@ -143,6 +143,14 @@ const DEFAULT_CONFIG: SystemConfig = {
  */
 export async function initializeDatabaseIfEmpty() {
   try {
+    const initializedDoc = await getDoc(doc(db, 'config', 'initialized'));
+    if (initializedDoc.exists()) {
+      return; // Already initialized, don't overwrite if collections are empty!
+    }
+
+    // Set initialized flag so we never do this again
+    await setDoc(doc(db, 'config', 'initialized'), { initializedAt: new Date().toISOString() });
+
     const doctorsSnap = await getDocs(collection(db, 'doctors'));
     if (doctorsSnap.empty) {
       console.log('Populating initial doctors...');

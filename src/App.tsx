@@ -401,6 +401,10 @@ export default function App() {
         notifications.forEach(n => {
           batch.delete(doc(db, 'notifications', n.id));
         });
+        
+        // Remove the initialized flag so the initializer can run again
+        batch.delete(doc(db, 'config', 'initialized'));
+        
         await batch.commit();
 
         await setDoc(doc(db, 'config', 'system'), {
@@ -686,8 +690,8 @@ export default function App() {
                 systemConfig={systemConfig}
                 notifications={notifications}
                 onUpdateConfig={handleUpdateConfig}
-                onUpdateDoctors={setDoctors}
-                onUpdateStaff={setStaff}
+                onUpdateDoctors={handleUpdateDoctors}
+                onUpdateStaff={handleUpdateStaff}
                 onUpdatePatientStatus={handleUpdatePatientStatus}
                 onResetDagdeel={handleResetDagdeel}
                 onClearNotificationLog={handleClearNotifications}
