@@ -121,6 +121,7 @@ export default function App() {
     teamsWebhookUrl: ''
   });
   const [notifications, setNotifications] = useState<TeamsNotification[]>([]);
+  const [timePunches, setTimePunches] = useState<TimePunch[]>([]);
 
   // Initialize DB once on mount
   useEffect(() => {
@@ -201,6 +202,21 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Sync Time Punches
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'timePunches'), (snapshot) => {
+      const punchesList: TimePunch[] = [];
+      snapshot.forEach((doc) => {
+        punchesList.push(doc.data() as TimePunch);
+      });
+      punchesList.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      setTimePunches(punchesList);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'timePunches');
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Handle register from Kiosk
   const handlePatientRegister = async (newPatientData: Omit<Patient, 'id' | 'arrivalTime' | 'arrivalDate' | 'waitingRoom' | 'status'>) => {
     const now = new Date();
@@ -240,7 +256,16 @@ export default function App() {
       status: 'Simulated'
     };
 
-    if (systemConfig.teamsWebhookUrl && systemConfig.teamsWebhookUrl.startsWith('http')) {
+    let targetWebhookUrl = systemConfig.teamsWebhookUrl;
+
+    if (target) {
+      const docMatch = doctors.find(d => d.name === target);
+      if (docMatch && docMatch.teamsWebhookUrl && docMatch.teamsWebhookUrl.startsWith('http')) {
+        targetWebhookUrl = docMatch.teamsWebhookUrl;
+      }
+    }
+
+    if (targetWebhookUrl && targetWebhookUrl.startsWith('http')) {
       try {
         const response = await fetch('/api/teams-notify', {
           method: 'POST',
@@ -248,7 +273,7 @@ export default function App() {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            webhookUrl: systemConfig.teamsWebhookUrl,
+            webhookUrl: targetWebhookUrl,
             messageText,
             title: "Huidcentrum Gent - Kiosk Aanmelding",
             payload
@@ -293,6 +318,48 @@ export default function App() {
     }
   };
 
+  const handleDeletePatient = async (patientId: string) => {
+    try {
+      await deleteDoc(doc(db, 'patients', patientId));
+    } catch (err) {
+      console.error("Error deleting patient in firestore:", err);
+    }
+  };
+
+  const handleAddTimePunch = async (staffId: string, type: 'in' | 'uit', customTimestamp?: string) => {
+    try {
+      const now = new Date();
+      const newPunch: TimePunch = {
+        id: `punch-${Date.now()}`,
+        staffId,
+        type,
+        timestamp: customTimestamp || now.toISOString()
+      };
+      await setDoc(doc(db, 'timePunches', newPunch.id), newPunch);
+    } catch (err) {
+      console.error("Error adding time punch:", err);
+    }
+  };
+
+  const handleEditTimePunch = async (punchId: string, newTimestamp: string, newType?: 'in' | 'uit') => {
+    try {
+      const updateData: any = { timestamp: newTimestamp };
+      if (newType) updateData.type = newType;
+      
+      await updateDoc(doc(db, 'timePunches', punchId), updateData);
+    } catch (err) {
+      console.error("Error editing time punch:", err);
+    }
+  };
+
+  const handleDeleteTimePunch = async (punchId: string) => {
+    try {
+      await deleteDoc(doc(db, 'timePunches', punchId));
+    } catch (err) {
+      console.error("Error deleting time punch:", err);
+    }
+  };
+
   // Half-day dagdeel transition reset
   const handleResetDagdeel = async (options: {
     clearPatients: boolean;
@@ -304,9 +371,7 @@ export default function App() {
       if (options.clearPatients) {
         const batch = writeBatch(db);
         patients.forEach(p => {
-          if (p.status !== 'Archived') {
-            batch.update(doc(db, 'patients', p.id), { status: 'Archived' });
-          }
+          batch.delete(doc(db, 'patients', p.id));
         });
         await batch.commit();
       }
@@ -481,26 +546,31 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-50 p-4 md:p-6" id="admin-fullscreen-root">
         <div className="max-w-7xl mx-auto w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
-          <AdminDashboard 
-            patients={patients}
-            doctors={doctors}
-            activeStaffList={staff}
-            systemConfig={systemConfig}
-            notifications={notifications}
-            onUpdateConfig={async (conf) => {
-              try {
-                await updateDoc(doc(db, 'config', 'system'), conf);
-              } catch (err) {
-                console.error("Error updating system config in firestore:", err);
-              }
-            }}
-            onUpdateDoctors={handleUpdateDoctors}
-            onUpdateStaff={handleUpdateStaff}
-            onUpdatePatientStatus={handleUpdatePatientStatus}
-            onResetDagdeel={handleResetDagdeel}
-            onClearNotificationLog={handleClearNotifications}
-            onAddSimulatedPatient={handleAddRandomSimulatedPatient}
-          />
+            <AdminDashboard 
+              patients={patients}
+              doctors={doctors}
+              activeStaffList={staff}
+              systemConfig={systemConfig}
+              notifications={notifications}
+              timePunches={timePunches}
+              onUpdateConfig={async (conf) => {
+                try {
+                  await updateDoc(doc(db, 'config', 'system'), conf);
+                } catch (err) {
+                  console.error("Error updating system config in firestore:", err);
+                }
+              }}
+              onUpdateDoctors={handleUpdateDoctors}
+              onUpdateStaff={handleUpdateStaff}
+              onUpdatePatientStatus={handleUpdatePatientStatus}
+              onDeletePatient={handleDeletePatient}
+              onResetDagdeel={handleResetDagdeel}
+              onClearNotificationLog={handleClearNotifications}
+              onAddSimulatedPatient={handleAddRandomSimulatedPatient}
+              onAddTimePunch={handleAddTimePunch}
+              onEditTimePunch={handleEditTimePunch}
+              onDeleteTimePunch={handleDeleteTimePunch}
+            />
         </div>
       </div>
     );
@@ -625,13 +695,18 @@ export default function App() {
                   activeStaffList={staff}
                   systemConfig={systemConfig}
                   notifications={notifications}
+                  timePunches={timePunches}
                   onUpdateConfig={handleUpdateConfig}
                   onUpdateDoctors={handleUpdateDoctors}
                   onUpdateStaff={handleUpdateStaff}
                   onUpdatePatientStatus={handleUpdatePatientStatus}
+                  onDeletePatient={handleDeletePatient}
                   onResetDagdeel={handleResetDagdeel}
                   onClearNotificationLog={handleClearNotifications}
                   onAddSimulatedPatient={handleAddRandomSimulatedPatient}
+                  onAddTimePunch={handleAddTimePunch}
+                  onEditTimePunch={handleEditTimePunch}
+                  onDeleteTimePunch={handleDeleteTimePunch}
                 />
               </div>
             </div>
@@ -673,13 +748,18 @@ export default function App() {
                 activeStaffList={staff}
                 systemConfig={systemConfig}
                 notifications={notifications}
+                timePunches={timePunches}
                 onUpdateConfig={handleUpdateConfig}
                 onUpdateDoctors={setDoctors}
                 onUpdateStaff={setStaff}
                 onUpdatePatientStatus={handleUpdatePatientStatus}
+                onDeletePatient={handleDeletePatient}
                 onResetDagdeel={handleResetDagdeel}
                 onClearNotificationLog={handleClearNotifications}
                 onAddSimulatedPatient={handleAddRandomSimulatedPatient}
+                onAddTimePunch={handleAddTimePunch}
+                onEditTimePunch={handleEditTimePunch}
+                onDeleteTimePunch={handleDeleteTimePunch}
               />
             </div>
           </div>

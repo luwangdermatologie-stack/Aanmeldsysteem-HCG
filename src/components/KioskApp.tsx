@@ -16,7 +16,8 @@ import {
   Info, 
   Clock, 
   ShieldCheck, 
-  Globe2 
+  Globe2,
+  HelpCircle
 } from 'lucide-react';
 
 interface KioskAppProps {
@@ -33,9 +34,10 @@ const playTone = (type: 'tap' | 'success' | 'warn') => {
 
 export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, isFullscreen = false }: KioskAppProps) {
   const [lang, setLang] = useState<LanguageCode>('NL');
-  const [currentScreen, setCurrentScreen] = useState<'home' | 'f1_details' | 'f1_appointment' | 'f1_success' | 'f2_choice' | 'f2_patient_form' | 'f2_success'>('home');
+  const [currentScreen, setCurrentScreen] = useState<'home' | 'f1_details' | 'f1_appointment' | 'f1_success' | 'f2_choice' | 'f2_patient_form' | 'f2_success' | 'help_success'>('home');
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [currentTimeStr, setCurrentTimeStr] = useState('');
+  const lastHelpRequestTime = useRef<number>(0);
 
   // Form Fields
   const [firstName, setFirstName] = useState('');
@@ -70,7 +72,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
 
   // Handle countdown timers for success screens
   useEffect(() => {
-    if (currentScreen === 'f1_success' || currentScreen === 'f2_success') {
+    if (currentScreen === 'f1_success' || currentScreen === 'f2_success' || currentScreen === 'help_success') {
       const targetSec = currentScreen === 'f1_success' ? 10 : 15;
       setCountdown(targetSec);
       
@@ -109,6 +111,27 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
     playTone('tap');
     setLang(code);
     setLangMenuOpen(false);
+  };
+
+  const handleHelpRequest = () => {
+    const now = Date.now();
+    // Prevent spamming within 15 seconds
+    if (now - lastHelpRequestTime.current < 15000) {
+      return;
+    }
+    lastHelpRequestTime.current = now;
+
+    playTone('tap');
+    
+    // Notify everyone (softer message)
+    const message = `ℹ️ **Hulp Gevraagd**: Iemand heeft hulp nodig bij de aanmeldkiosk.`;
+    onTeamsNotify(message, 'Iedereen', {
+      type: 'help_request',
+      prioriteit: 'Normaal',
+      time: new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })
+    });
+
+    setCurrentScreen('help_success');
   };
 
   // Screen 1: Choose Flow
@@ -355,6 +378,14 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 </span>
               </button>
             </div>
+            
+            <button
+              onClick={handleHelpRequest}
+              className="mt-6 w-full flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm shadow-sm hover:shadow transition-all duration-200 cursor-pointer"
+            >
+              <HelpCircle className="h-5 w-5 text-slate-500" />
+              Ik heb hulp nodig
+            </button>
           </div>
         )}
 
@@ -577,6 +608,33 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 <span className="text-start">{t.lateWarningText}</span>
               </div>
             )}
+
+            <div className="text-xs text-[#8C7670]">
+              <p>{t.redirectTimerText.replace('{seconds}', countdown.toString())}</p>
+              <button 
+                onClick={handleResetToHome}
+                className="mt-2.5 underline hover:text-text-main cursor-pointer text-[11px] font-semibold"
+              >
+                Ga direct terug naar start
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* HELP SUCCESS PAGE */}
+        {currentScreen === 'help_success' && (
+          <div className="w-full max-w-2xl text-center animate-bounce-in py-2">
+            <div className="h-16 w-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-200">
+              <HelpCircle className="h-10 w-10 text-blue-500" />
+            </div>
+
+            <h2 className="text-2xl font-sans font-bold text-text-main mb-2">
+              Hulp is onderweg
+            </h2>
+            
+            <p className="text-text-sub text-sm mb-6">
+              Er is zojuist een melding gestuurd naar onze medewerkers. Even geduld alstublieft, er komt zo meteen iemand naar u toe.
+            </p>
 
             <div className="text-xs text-[#8C7670]">
               <p>{t.redirectTimerText.replace('{seconds}', countdown.toString())}</p>

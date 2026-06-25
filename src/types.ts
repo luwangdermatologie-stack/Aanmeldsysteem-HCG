@@ -30,6 +30,7 @@ export interface Doctor {
   waitingRoom: 'Gelijkvloers' | 'Bovenverdieping';
   isAvailable: boolean;
   avatarColor: string;
+  teamsWebhookUrl?: string; // Optional MS Teams hook
 }
 
 export interface ActiveStaff {
@@ -52,4 +53,11 @@ export interface TeamsNotification {
   payload: any;
   status: 'Success' | 'Failed' | 'Simulated';
   messagePreview: string;
+}
+
+export interface TimePunch {
+  id: string;
+  staffId: string;
+  timestamp: string;
+  type: 'in' | 'uit';
 }
