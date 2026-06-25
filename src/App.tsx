@@ -97,6 +97,10 @@ export default function App() {
     if (view === 'kiosk' || view === 'admin' || view === 'split') {
       return view;
     }
+    const saved = localStorage.getItem('derm_reception_viewmode');
+    if (saved === 'kiosk' || saved === 'admin' || saved === 'split') {
+      return saved;
+    }
     return 'admin';
   });
 
@@ -286,7 +290,7 @@ export default function App() {
   const handleUpdateConfig = async (conf: Partial<SystemConfig>) => {
     try {
       setSystemConfig(prev => ({ ...prev, ...conf }));
-      await updateDoc(doc(db, 'config', 'system'), conf);
+      await setDoc(doc(db, 'config', 'system'), conf, { merge: true });
     } catch (err) {
       console.error("Error updating system config in firestore:", err);
     }
@@ -332,10 +336,10 @@ export default function App() {
       });
       await drBatch.commit();
 
-      await updateDoc(doc(db, 'config', 'system'), {
+      await setDoc(doc(db, 'config', 'system'), {
         currentDagdeel: options.nextPeriod,
         activeStaffId: options.supportStaffId
-      });
+      }, { merge: true });
     } catch (err) {
       console.error("Error resetting dagdeel in firestore:", err);
     }
@@ -503,13 +507,7 @@ export default function App() {
             activeStaffList={staff}
             systemConfig={systemConfig}
             notifications={notifications}
-            onUpdateConfig={async (conf) => {
-              try {
-                await updateDoc(doc(db, 'config', 'system'), conf);
-              } catch (err) {
-                console.error("Error updating system config in firestore:", err);
-              }
-            }}
+            onUpdateConfig={handleUpdateConfig}
             onUpdateDoctors={handleUpdateDoctors}
             onUpdateStaff={handleUpdateStaff}
             onUpdatePatientStatus={handleUpdatePatientStatus}
