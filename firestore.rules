@@ -32,13 +32,13 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // MS Teams Notifications audit trail
-    match /notifications/{notificationId} {
+    // Time logs for staff
+    match /time_logs/{logId} {
       allow read, write: if true;
     }
 
-    // Time Punches collection
-    match /timePunches/{punchId} {
+    // MS Teams Notifications audit trail
+    match /notifications/{notificationId} {
       allow read, write: if true;
     }
   }

@@ -97,8 +97,7 @@ export default function App() {
     if (view === 'kiosk' || view === 'admin' || view === 'split') {
       return view;
     }
-    const stored = localStorage.getItem('derm_reception_viewmode');
-    return (stored as 'split' | 'kiosk' | 'admin') || 'split';
+    return 'admin';
   });
 
   const [isLocked] = useState(() => {
@@ -121,7 +120,6 @@ export default function App() {
     teamsWebhookUrl: ''
   });
   const [notifications, setNotifications] = useState<TeamsNotification[]>([]);
-  const [timePunches, setTimePunches] = useState<TimePunch[]>([]);
 
   // Initialize DB once on mount
   useEffect(() => {
@@ -198,21 +196,6 @@ export default function App() {
       setNotifications(notificationsList);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'notifications');
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Sync Time Punches
-  useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'timePunches'), (snapshot) => {
-      const punchesList: TimePunch[] = [];
-      snapshot.forEach((doc) => {
-        punchesList.push(doc.data() as TimePunch);
-      });
-      punchesList.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-      setTimePunches(punchesList);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'timePunches');
     });
     return () => unsubscribe();
   }, []);
@@ -312,51 +295,13 @@ export default function App() {
   // Patient manual status transition from table
   const handleUpdatePatientStatus = async (patientId: string, newStatus: Patient['status']) => {
     try {
-      await updateDoc(doc(db, 'patients', patientId), { status: newStatus });
+      if (newStatus === 'Archived') {
+        await deleteDoc(doc(db, 'patients', patientId));
+      } else {
+        await updateDoc(doc(db, 'patients', patientId), { status: newStatus });
+      }
     } catch (err) {
       console.error("Error updating patient status in firestore:", err);
-    }
-  };
-
-  const handleDeletePatient = async (patientId: string) => {
-    try {
-      await deleteDoc(doc(db, 'patients', patientId));
-    } catch (err) {
-      console.error("Error deleting patient in firestore:", err);
-    }
-  };
-
-  const handleAddTimePunch = async (staffId: string, type: 'in' | 'uit', customTimestamp?: string) => {
-    try {
-      const now = new Date();
-      const newPunch: TimePunch = {
-        id: `punch-${Date.now()}`,
-        staffId,
-        type,
-        timestamp: customTimestamp || now.toISOString()
-      };
-      await setDoc(doc(db, 'timePunches', newPunch.id), newPunch);
-    } catch (err) {
-      console.error("Error adding time punch:", err);
-    }
-  };
-
-  const handleEditTimePunch = async (punchId: string, newTimestamp: string, newType?: 'in' | 'uit') => {
-    try {
-      const updateData: any = { timestamp: newTimestamp };
-      if (newType) updateData.type = newType;
-      
-      await updateDoc(doc(db, 'timePunches', punchId), updateData);
-    } catch (err) {
-      console.error("Error editing time punch:", err);
-    }
-  };
-
-  const handleDeleteTimePunch = async (punchId: string) => {
-    try {
-      await deleteDoc(doc(db, 'timePunches', punchId));
-    } catch (err) {
-      console.error("Error deleting time punch:", err);
     }
   };
 
@@ -371,7 +316,9 @@ export default function App() {
       if (options.clearPatients) {
         const batch = writeBatch(db);
         patients.forEach(p => {
-          batch.delete(doc(db, 'patients', p.id));
+          if (p.status !== 'Archived') {
+            batch.delete(doc(db, 'patients', p.id));
+          }
         });
         await batch.commit();
       }
@@ -546,31 +493,26 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-50 p-4 md:p-6" id="admin-fullscreen-root">
         <div className="max-w-7xl mx-auto w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
-            <AdminDashboard 
-              patients={patients}
-              doctors={doctors}
-              activeStaffList={staff}
-              systemConfig={systemConfig}
-              notifications={notifications}
-              timePunches={timePunches}
-              onUpdateConfig={async (conf) => {
-                try {
-                  await updateDoc(doc(db, 'config', 'system'), conf);
-                } catch (err) {
-                  console.error("Error updating system config in firestore:", err);
-                }
-              }}
-              onUpdateDoctors={handleUpdateDoctors}
-              onUpdateStaff={handleUpdateStaff}
-              onUpdatePatientStatus={handleUpdatePatientStatus}
-              onDeletePatient={handleDeletePatient}
-              onResetDagdeel={handleResetDagdeel}
-              onClearNotificationLog={handleClearNotifications}
-              onAddSimulatedPatient={handleAddRandomSimulatedPatient}
-              onAddTimePunch={handleAddTimePunch}
-              onEditTimePunch={handleEditTimePunch}
-              onDeleteTimePunch={handleDeleteTimePunch}
-            />
+          <AdminDashboard 
+            patients={patients}
+            doctors={doctors}
+            activeStaffList={staff}
+            systemConfig={systemConfig}
+            notifications={notifications}
+            onUpdateConfig={async (conf) => {
+              try {
+                await updateDoc(doc(db, 'config', 'system'), conf);
+              } catch (err) {
+                console.error("Error updating system config in firestore:", err);
+              }
+            }}
+            onUpdateDoctors={handleUpdateDoctors}
+            onUpdateStaff={handleUpdateStaff}
+            onUpdatePatientStatus={handleUpdatePatientStatus}
+            onResetDagdeel={handleResetDagdeel}
+            onClearNotificationLog={handleClearNotifications}
+            onAddSimulatedPatient={handleAddRandomSimulatedPatient}
+          />
         </div>
       </div>
     );
@@ -695,18 +637,13 @@ export default function App() {
                   activeStaffList={staff}
                   systemConfig={systemConfig}
                   notifications={notifications}
-                  timePunches={timePunches}
                   onUpdateConfig={handleUpdateConfig}
                   onUpdateDoctors={handleUpdateDoctors}
                   onUpdateStaff={handleUpdateStaff}
                   onUpdatePatientStatus={handleUpdatePatientStatus}
-                  onDeletePatient={handleDeletePatient}
                   onResetDagdeel={handleResetDagdeel}
                   onClearNotificationLog={handleClearNotifications}
                   onAddSimulatedPatient={handleAddRandomSimulatedPatient}
-                  onAddTimePunch={handleAddTimePunch}
-                  onEditTimePunch={handleEditTimePunch}
-                  onDeleteTimePunch={handleDeleteTimePunch}
                 />
               </div>
             </div>
@@ -748,18 +685,13 @@ export default function App() {
                 activeStaffList={staff}
                 systemConfig={systemConfig}
                 notifications={notifications}
-                timePunches={timePunches}
                 onUpdateConfig={handleUpdateConfig}
                 onUpdateDoctors={setDoctors}
                 onUpdateStaff={setStaff}
                 onUpdatePatientStatus={handleUpdatePatientStatus}
-                onDeletePatient={handleDeletePatient}
                 onResetDagdeel={handleResetDagdeel}
                 onClearNotificationLog={handleClearNotifications}
                 onAddSimulatedPatient={handleAddRandomSimulatedPatient}
-                onAddTimePunch={handleAddTimePunch}
-                onEditTimePunch={handleEditTimePunch}
-                onDeleteTimePunch={handleDeleteTimePunch}
               />
             </div>
           </div>

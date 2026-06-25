@@ -3,11 +3,49 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
+import cron from "node-cron";
+import fs from "fs";
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, getDocs, writeBatch } from "firebase/firestore";
 
 async function startServer() {
   const app = express();
-  app.set("trust proxy", 1);
   const PORT = 3000;
+
+  // Trust the first proxy to resolve X-Forwarded-For issues with express-rate-limit
+  app.set('trust proxy', 1);
+
+  // Initialize Firebase for Cron
+  try {
+    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+    if (fs.existsSync(configPath)) {
+      const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      const firebaseApp = initializeApp(firebaseConfig);
+      const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+      
+      cron.schedule("0 0 * * *", async () => {
+        try {
+          console.log("[Cron] Start clearing patient records at midnight GMT+1...");
+          const snap = await getDocs(collection(db, "patients"));
+          if (!snap.empty) {
+            const batch = writeBatch(db);
+            snap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+            await batch.commit();
+            console.log(`[Cron] Successfully deleted ${snap.size} patients.`);
+          } else {
+            console.log("[Cron] No patients to delete.");
+          }
+        } catch (err) {
+          console.error("[Cron] Error deleting patients:", err);
+        }
+      }, {
+        timezone: "Etc/GMT-1" // GMT+1 without DST
+      });
+      console.log("[Server] Cron job for deleting patients scheduled at midnight GMT+1");
+    }
+  } catch (err) {
+    console.error("[Server] Failed to setup cron job:", err);
+  }
 
   // Use Helmet for security headers (HSTS, NoSniff, XSS protection, etc.)
   // We disable contentSecurityPolicy in dev mode to allow Vite to work seamlessly

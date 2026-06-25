@@ -45,6 +45,17 @@ export interface SystemConfig {
   teamsWebhookUrl: string;
 }
 
+export interface TimeLog {
+  id: string;
+  staffId: string;
+  date: string; // YYYY-MM-DD
+  morningIn?: string; // HH:mm
+  morningOut?: string; // HH:mm
+  afternoonIn?: string; // HH:mm
+  afternoonOut?: string; // HH:mm
+  totalHours?: number;
+}
+
 export interface TeamsNotification {
   id: string;
   timestamp: string;
@@ -53,11 +64,4 @@ export interface TeamsNotification {
   payload: any;
   status: 'Success' | 'Failed' | 'Simulated';
   messagePreview: string;
-}
-
-export interface TimePunch {
-  id: string;
-  staffId: string;
-  timestamp: string;
-  type: 'in' | 'uit';
 }
