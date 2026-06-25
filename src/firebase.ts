@@ -17,9 +17,8 @@ import {
   deleteDoc, 
   writeBatch 
 } from 'firebase/firestore';
-import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification } from './types';
-
 import firebaseConfig from '../firebase-applet-config.json';
+import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification } from './types';
 
 const app = initializeApp(firebaseConfig);
 // Keep the database initialized properly
@@ -58,8 +57,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  // We remove the throw Error so it doesn't cause uncaught promise rejections 
-  // that completely break the execution flow.
+  throw new Error(JSON.stringify(errInfo));
 }
 
 // Preloaded constants for populating empty tables
@@ -118,6 +116,9 @@ const PRELOADED_PATIENTS: Patient[] = [
     birthDate: '-',
     nationalRegistryNum: '88.05.20-112.54',
     idCardNum: '',
+    appointmentTime: undefined,
+    doctorId: undefined,
+    doctorName: undefined,
     hasAppointment: false,
     flowType: 'patient_info',
     arrivalTime: '09:45:01',
@@ -145,14 +146,6 @@ const DEFAULT_CONFIG: SystemConfig = {
  */
 export async function initializeDatabaseIfEmpty() {
   try {
-    const initializedDoc = await getDoc(doc(db, 'config', 'initialized'));
-    if (initializedDoc.exists()) {
-      return; // Already initialized, don't overwrite if collections are empty!
-    }
-
-    // Set initialized flag so we never do this again
-    await setDoc(doc(db, 'config', 'initialized'), { initializedAt: new Date().toISOString() });
-
     const doctorsSnap = await getDocs(collection(db, 'doctors'));
     if (doctorsSnap.empty) {
       console.log('Populating initial doctors...');

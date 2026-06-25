@@ -97,11 +97,8 @@ export default function App() {
     if (view === 'kiosk' || view === 'admin' || view === 'split') {
       return view;
     }
-    const saved = localStorage.getItem('derm_reception_viewmode');
-    if (saved === 'kiosk' || saved === 'admin' || saved === 'split') {
-      return saved;
-    }
-    return 'admin';
+    const stored = localStorage.getItem('derm_reception_viewmode');
+    return (stored as 'split' | 'kiosk' | 'admin') || 'split';
   });
 
   const [isLocked] = useState(() => {
@@ -243,16 +240,7 @@ export default function App() {
       status: 'Simulated'
     };
 
-    let targetWebhookUrl = systemConfig.teamsWebhookUrl;
-
-    if (target) {
-      const docMatch = doctors.find(d => d.name === target);
-      if (docMatch && docMatch.teamsWebhookUrl && docMatch.teamsWebhookUrl.startsWith('http')) {
-        targetWebhookUrl = docMatch.teamsWebhookUrl;
-      }
-    }
-
-    if (targetWebhookUrl && targetWebhookUrl.startsWith('http')) {
+    if (systemConfig.teamsWebhookUrl && systemConfig.teamsWebhookUrl.startsWith('http')) {
       try {
         const response = await fetch('/api/teams-notify', {
           method: 'POST',
@@ -260,7 +248,7 @@ export default function App() {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            webhookUrl: targetWebhookUrl,
+            webhookUrl: systemConfig.teamsWebhookUrl,
             messageText,
             title: "Huidcentrum Gent - Kiosk Aanmelding",
             payload
@@ -290,7 +278,7 @@ export default function App() {
   const handleUpdateConfig = async (conf: Partial<SystemConfig>) => {
     try {
       setSystemConfig(prev => ({ ...prev, ...conf }));
-      await setDoc(doc(db, 'config', 'system'), conf, { merge: true });
+      await updateDoc(doc(db, 'config', 'system'), conf);
     } catch (err) {
       console.error("Error updating system config in firestore:", err);
     }
@@ -299,11 +287,7 @@ export default function App() {
   // Patient manual status transition from table
   const handleUpdatePatientStatus = async (patientId: string, newStatus: Patient['status']) => {
     try {
-      if (newStatus === 'Archived') {
-        await deleteDoc(doc(db, 'patients', patientId));
-      } else {
-        await updateDoc(doc(db, 'patients', patientId), { status: newStatus });
-      }
+      await updateDoc(doc(db, 'patients', patientId), { status: newStatus });
     } catch (err) {
       console.error("Error updating patient status in firestore:", err);
     }
@@ -321,7 +305,7 @@ export default function App() {
         const batch = writeBatch(db);
         patients.forEach(p => {
           if (p.status !== 'Archived') {
-            batch.delete(doc(db, 'patients', p.id));
+            batch.update(doc(db, 'patients', p.id), { status: 'Archived' });
           }
         });
         await batch.commit();
@@ -336,10 +320,10 @@ export default function App() {
       });
       await drBatch.commit();
 
-      await setDoc(doc(db, 'config', 'system'), {
+      await updateDoc(doc(db, 'config', 'system'), {
         currentDagdeel: options.nextPeriod,
         activeStaffId: options.supportStaffId
-      }, { merge: true });
+      });
     } catch (err) {
       console.error("Error resetting dagdeel in firestore:", err);
     }
@@ -405,10 +389,6 @@ export default function App() {
         notifications.forEach(n => {
           batch.delete(doc(db, 'notifications', n.id));
         });
-        
-        // Remove the initialized flag so the initializer can run again
-        batch.delete(doc(db, 'config', 'initialized'));
-        
         await batch.commit();
 
         await setDoc(doc(db, 'config', 'system'), {
@@ -507,7 +487,13 @@ export default function App() {
             activeStaffList={staff}
             systemConfig={systemConfig}
             notifications={notifications}
-            onUpdateConfig={handleUpdateConfig}
+            onUpdateConfig={async (conf) => {
+              try {
+                await updateDoc(doc(db, 'config', 'system'), conf);
+              } catch (err) {
+                console.error("Error updating system config in firestore:", err);
+              }
+            }}
             onUpdateDoctors={handleUpdateDoctors}
             onUpdateStaff={handleUpdateStaff}
             onUpdatePatientStatus={handleUpdatePatientStatus}
@@ -639,7 +625,13 @@ export default function App() {
                   activeStaffList={staff}
                   systemConfig={systemConfig}
                   notifications={notifications}
-                  onUpdateConfig={handleUpdateConfig}
+                  onUpdateConfig={async (conf) => {
+                    try {
+                      await updateDoc(doc(db, 'config', 'system'), conf);
+                    } catch (err) {
+                      console.error("Error updating system config in firestore:", err);
+                    }
+                  }}
                   onUpdateDoctors={handleUpdateDoctors}
                   onUpdateStaff={handleUpdateStaff}
                   onUpdatePatientStatus={handleUpdatePatientStatus}
@@ -687,9 +679,15 @@ export default function App() {
                 activeStaffList={staff}
                 systemConfig={systemConfig}
                 notifications={notifications}
-                onUpdateConfig={handleUpdateConfig}
-                onUpdateDoctors={handleUpdateDoctors}
-                onUpdateStaff={handleUpdateStaff}
+                onUpdateConfig={async (conf) => {
+                  try {
+                    await updateDoc(doc(db, 'config', 'system'), conf);
+                  } catch (err) {
+                    console.error("Error updating system config in firestore:", err);
+                  }
+                }}
+                onUpdateDoctors={setDoctors}
+                onUpdateStaff={setStaff}
                 onUpdatePatientStatus={handleUpdatePatientStatus}
                 onResetDagdeel={handleResetDagdeel}
                 onClearNotificationLog={handleClearNotifications}
