@@ -22,7 +22,7 @@ import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification } from '.
 
 const app = initializeApp(firebaseConfig);
 // Keep the database initialized properly
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); // Cache bust
 export const auth = getAuth();
 
 export enum OperationType {

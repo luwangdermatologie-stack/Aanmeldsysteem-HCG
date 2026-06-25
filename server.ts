@@ -10,7 +10,7 @@ import { getFirestore, collection, getDocs, writeBatch } from "firebase/firestor
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Trust the first proxy to resolve X-Forwarded-For issues with express-rate-limit
   app.set('trust proxy', 1);
