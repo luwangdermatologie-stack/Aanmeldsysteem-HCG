@@ -91,7 +91,15 @@ const PRELOADED_PATIENTS: Patient[] = [
 ];
 
 export default function App() {
-  const [viewMode, setViewMode] = useState<'split' | 'kiosk' | 'admin'>('split');
+  const [viewMode, setViewMode] = useState<'split' | 'kiosk' | 'admin'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    if (view === 'kiosk' || view === 'admin' || view === 'split') {
+      return view;
+    }
+    const stored = localStorage.getItem('derm_reception_viewmode');
+    return (stored as 'split' | 'kiosk' | 'admin') || 'split';
+  });
 
   const [isLocked] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -232,16 +240,7 @@ export default function App() {
       status: 'Simulated'
     };
 
-    let targetWebhookUrl = systemConfig.teamsWebhookUrl;
-
-    if (target) {
-      const docMatch = doctors.find(d => d.name === target);
-      if (docMatch && docMatch.teamsWebhookUrl && docMatch.teamsWebhookUrl.startsWith('http')) {
-        targetWebhookUrl = docMatch.teamsWebhookUrl;
-      }
-    }
-
-    if (targetWebhookUrl && targetWebhookUrl.startsWith('http')) {
+    if (systemConfig.teamsWebhookUrl && systemConfig.teamsWebhookUrl.startsWith('http')) {
       try {
         const response = await fetch('/api/teams-notify', {
           method: 'POST',
@@ -249,7 +248,7 @@ export default function App() {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            webhookUrl: targetWebhookUrl,
+            webhookUrl: systemConfig.teamsWebhookUrl,
             messageText,
             title: "Huidcentrum Gent - Kiosk Aanmelding",
             payload
@@ -626,7 +625,13 @@ export default function App() {
                   activeStaffList={staff}
                   systemConfig={systemConfig}
                   notifications={notifications}
-                  onUpdateConfig={handleUpdateConfig}
+                  onUpdateConfig={async (conf) => {
+                    try {
+                      await updateDoc(doc(db, 'config', 'system'), conf);
+                    } catch (err) {
+                      console.error("Error updating system config in firestore:", err);
+                    }
+                  }}
                   onUpdateDoctors={handleUpdateDoctors}
                   onUpdateStaff={handleUpdateStaff}
                   onUpdatePatientStatus={handleUpdatePatientStatus}
@@ -674,7 +679,13 @@ export default function App() {
                 activeStaffList={staff}
                 systemConfig={systemConfig}
                 notifications={notifications}
-                onUpdateConfig={handleUpdateConfig}
+                onUpdateConfig={async (conf) => {
+                  try {
+                    await updateDoc(doc(db, 'config', 'system'), conf);
+                  } catch (err) {
+                    console.error("Error updating system config in firestore:", err);
+                  }
+                }}
                 onUpdateDoctors={setDoctors}
                 onUpdateStaff={setStaff}
                 onUpdatePatientStatus={handleUpdatePatientStatus}

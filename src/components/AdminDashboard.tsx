@@ -20,8 +20,10 @@ import {
   TrendingUp, 
   HelpCircle,
   FolderSync,
-  CheckCircle
+  CheckCircle,
+  Timer
 } from 'lucide-react';
+import TimeClock from './TimeClock';
 
 interface AdminDashboardProps {
   patients: Patient[];
@@ -53,7 +55,7 @@ export default function AdminDashboard({
   onAddSimulatedPatient
 }: AdminDashboardProps) {
   // Tabs and filters inside Admin
-  const [activeTab, setActiveTab] = useState<'overview' | 'config' | 'notifications'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'config' | 'notifications' | 'timeclock'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [doctorFilter, setDoctorFilter] = useState('all');
   const [roomFilter, setRoomFilter] = useState('all');
@@ -428,7 +430,7 @@ export default function AdminDashboard({
             </div>
             <p className="text-xs text-slate-600 leading-relaxed mb-4">
               ⚠️ <strong>Bent u absoluut zeker?</strong> <br /><br />
-              Bij het wisselen naar het volgende dagdeel (<strong>{tempPeriod.toUpperCase()}</strong>) worden live aangemelde patiënten gearchiveerd om de privacy- en GDPR-richtlijnen te garanderen. 
+              Bij het wisselen naar het volgende dagdeel (<strong>{tempPeriod.toUpperCase()}</strong>) worden live aangemelde patiënten permanent verwijderd om de privacy- en GDPR-richtlijnen te garanderen. 
               De wachtkamers en de ondersteunende baliewerker (<strong>{activeStaffList.find(s => s.id === tempStaffId)?.name || 'Steven'}</strong>) worden geconfigureerd voor de nieuwe shifts.
             </p>
             <div className="flex gap-2.5 justify-end">
@@ -571,6 +573,13 @@ export default function AdminDashboard({
                 {notifications.length}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setActiveTab('timeclock')}
+            className={`px-4 py-2 rounded-lg font-bold transition flex items-center gap-1.5 relative cursor-pointer ${activeTab === 'timeclock' ? 'bg-bg-medical text-text-main font-bold' : 'text-text-sub hover:text-text-main'}`}
+          >
+            <Timer className="h-4 w-4 text-text-sub" />
+            Tijdregistratie
           </button>
         </div>
 
@@ -805,7 +814,7 @@ export default function AdminDashboard({
                                   id={`btn-archive-patient-${patient.id}`}
                                   onClick={() => onUpdatePatientStatus(patient.id, 'Archived')}
                                   className="text-slate-400 hover:text-red-500 p-1 rounded transition"
-                                  title="Archiveer/Verwijder ivm privacy"
+                                  title="Verwijder (Privacy)"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
@@ -877,7 +886,7 @@ export default function AdminDashboard({
                     className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 rounded-lg transition shadow-sm flex items-center justify-center gap-2 cursor-pointer text-xs"
                   >
                     <Trash2 className="h-4 w-4" />
-                    Wissel Dagdeel & Archiveer Huidige Patiënten
+                    Wissel Dagdeel & Verwijder Huidige Patiënten
                   </button>
                 </div>
               </div>
@@ -1282,6 +1291,10 @@ export default function AdminDashboard({
           </div>
         )}
 
+        {/* TAB 4: TIJDREGISTRATIE */}
+        {activeTab === 'timeclock' && (
+          <TimeClock staffList={activeStaffList} />
+        )}
       </div>
     </div>
   );

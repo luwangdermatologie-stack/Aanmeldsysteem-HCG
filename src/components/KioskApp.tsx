@@ -16,7 +16,8 @@ import {
   Info, 
   Clock, 
   ShieldCheck, 
-  Globe2 
+  Globe2,
+  HelpCircle
 } from 'lucide-react';
 
 interface KioskAppProps {
@@ -33,7 +34,7 @@ const playTone = (type: 'tap' | 'success' | 'warn') => {
 
 export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, isFullscreen = false }: KioskAppProps) {
   const [lang, setLang] = useState<LanguageCode>('NL');
-  const [currentScreen, setCurrentScreen] = useState<'home' | 'f1_details' | 'f1_appointment' | 'f1_success' | 'f2_choice' | 'f2_patient_form' | 'f2_success'>('home');
+  const [currentScreen, setCurrentScreen] = useState<'home' | 'f1_details' | 'f1_appointment' | 'f1_success' | 'f2_choice' | 'f2_patient_form' | 'f2_success' | 'help_success'>('home');
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [currentTimeStr, setCurrentTimeStr] = useState('');
 
@@ -55,6 +56,17 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
   const [resolvedRoom, setResolvedRoom] = useState<'Gelijkvloers' | 'Bovenverdieping'>('Gelijkvloers');
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Help button states
+  const [helpCooldown, setHelpCooldown] = useState(0);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (helpCooldown > 0) {
+      timer = setInterval(() => setHelpCooldown(prev => prev - 1), 1000);
+    }
+    return () => clearInterval(timer);
+  }, [helpCooldown]);
+
   const t = translations[lang];
 
   // Keep live time updated
@@ -70,8 +82,8 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
 
   // Handle countdown timers for success screens
   useEffect(() => {
-    if (currentScreen === 'f1_success' || currentScreen === 'f2_success') {
-      const targetSec = currentScreen === 'f1_success' ? 10 : 15;
+    if (currentScreen === 'f1_success' || currentScreen === 'f2_success' || currentScreen === 'help_success') {
+      const targetSec = currentScreen === 'f1_success' ? 10 : (currentScreen === 'help_success' ? 5 : 15);
       setCountdown(targetSec);
       
       timerRef.current = setInterval(() => {
@@ -355,6 +367,49 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 </span>
               </button>
             </div>
+            
+            <div className="mt-6 flex justify-center w-full">
+              <button
+                id="btn-kiosk-help"
+                onClick={() => {
+                  if (helpCooldown > 0) return;
+                  playTone('tap');
+                  onTeamsNotify("🆘 **HELP AANVRAAG**: Een patiënt of bezoeker heeft via de kiosk om directe assistentie gevraagd.", undefined, { type: "help" });
+                  setHelpCooldown(15);
+                  setCurrentScreen('help_success');
+                }}
+                disabled={helpCooldown > 0}
+                className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold transition-all shadow-sm
+                  ${helpCooldown > 0 ? 'bg-bg-medical text-text-sub border border-border-soft cursor-not-allowed' : 'bg-accent-peach text-text-main border-2 border-accent-peach hover:bg-accent-peach/80 cursor-pointer'}
+                `}
+              >
+                <HelpCircle className="h-5 w-5" />
+                {helpCooldown > 0 ? `Wacht ${helpCooldown}s` : "Assistentie Nodig?"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* HELP SUCCESS SCREEN */}
+        {currentScreen === 'help_success' && (
+          <div className="w-full text-center max-w-xl animate-scale-up flex flex-col items-center justify-center h-full">
+            <div className="relative mb-6">
+              <div className="absolute inset-0 bg-accent-peach rounded-full blur-xl opacity-40 animate-pulse"></div>
+              <ShieldCheck className="h-20 w-20 text-accent-peach relative z-10" />
+            </div>
+            <h2 className="text-3xl font-sans font-bold text-text-main mb-4 tracking-tight">Hulp is onderweg!</h2>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-border-soft mb-8">
+              <p className="text-sm font-semibold text-text-sub leading-relaxed">
+                Er is een melding gestuurd naar onze medewerkers. Gelieve even te wachten, iemand komt u zo dadelijk helpen aan de balie.
+              </p>
+            </div>
+            
+            <button
+              onClick={handleResetToHome}
+              className="bg-button-beige text-text-main hover:bg-button-active font-bold py-3 px-8 rounded-full border border-border-soft transition shadow-sm cursor-pointer"
+            >
+              Terug naar Startscherm ({countdown}s)
+            </button>
           </div>
         )}
 
