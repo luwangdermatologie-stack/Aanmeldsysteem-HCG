@@ -30,24 +30,13 @@ export interface Doctor {
   waitingRoom: 'Gelijkvloers' | 'Bovenverdieping';
   isAvailable: boolean;
   avatarColor: string;
-  teamsWebhookUrl?: string;
+  teamsWebhookUrl?: string; // Optional MS Teams hook
 }
 
 export interface ActiveStaff {
   id: string;
   name: string;
   role: string;
-}
-
-export interface TimeLog {
-  id: string;
-  staffId: string;
-  date: string;
-  totalHours: number;
-  morningIn?: string;
-  morningOut?: string;
-  afternoonIn?: string;
-  afternoonOut?: string;
 }
 
 export interface SystemConfig {

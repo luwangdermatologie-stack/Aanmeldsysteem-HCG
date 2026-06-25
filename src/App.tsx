@@ -240,7 +240,16 @@ export default function App() {
       status: 'Simulated'
     };
 
-    if (systemConfig.teamsWebhookUrl && systemConfig.teamsWebhookUrl.startsWith('http')) {
+    let targetWebhookUrl = systemConfig.teamsWebhookUrl;
+
+    if (target) {
+      const docMatch = doctors.find(d => d.name === target);
+      if (docMatch && docMatch.teamsWebhookUrl && docMatch.teamsWebhookUrl.startsWith('http')) {
+        targetWebhookUrl = docMatch.teamsWebhookUrl;
+      }
+    }
+
+    if (targetWebhookUrl && targetWebhookUrl.startsWith('http')) {
       try {
         const response = await fetch('/api/teams-notify', {
           method: 'POST',
@@ -248,7 +257,7 @@ export default function App() {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            webhookUrl: systemConfig.teamsWebhookUrl,
+            webhookUrl: targetWebhookUrl,
             messageText,
             title: "Huidcentrum Gent - Kiosk Aanmelding",
             payload
@@ -625,13 +634,7 @@ export default function App() {
                   activeStaffList={staff}
                   systemConfig={systemConfig}
                   notifications={notifications}
-                  onUpdateConfig={async (conf) => {
-                    try {
-                      await updateDoc(doc(db, 'config', 'system'), conf);
-                    } catch (err) {
-                      console.error("Error updating system config in firestore:", err);
-                    }
-                  }}
+                  onUpdateConfig={handleUpdateConfig}
                   onUpdateDoctors={handleUpdateDoctors}
                   onUpdateStaff={handleUpdateStaff}
                   onUpdatePatientStatus={handleUpdatePatientStatus}
@@ -679,13 +682,7 @@ export default function App() {
                 activeStaffList={staff}
                 systemConfig={systemConfig}
                 notifications={notifications}
-                onUpdateConfig={async (conf) => {
-                  try {
-                    await updateDoc(doc(db, 'config', 'system'), conf);
-                  } catch (err) {
-                    console.error("Error updating system config in firestore:", err);
-                  }
-                }}
+                onUpdateConfig={handleUpdateConfig}
                 onUpdateDoctors={setDoctors}
                 onUpdateStaff={setStaff}
                 onUpdatePatientStatus={handleUpdatePatientStatus}

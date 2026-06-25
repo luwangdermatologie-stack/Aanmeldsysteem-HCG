@@ -1,69 +1,10 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import rateLimit from "express-rate-limit";
-import helmet from "helmet";
-import cron from "node-cron";
-import fs from "fs";
-import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getDocs, writeBatch } from "firebase/firestore";
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
-
-  // Trust the first proxy to resolve X-Forwarded-For issues with express-rate-limit
-  app.set('trust proxy', 1);
-
-  // Initialize Firebase for Cron
-  try {
-    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-    if (fs.existsSync(configPath)) {
-      const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
-      const firebaseApp = initializeApp(firebaseConfig);
-      const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
-      
-      cron.schedule("0 0 * * *", async () => {
-        try {
-          console.log("[Cron] Start clearing patient records at midnight GMT+1...");
-          const snap = await getDocs(collection(db, "patients"));
-          if (!snap.empty) {
-            const batch = writeBatch(db);
-            snap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
-            await batch.commit();
-            console.log(`[Cron] Successfully deleted ${snap.size} patients.`);
-          } else {
-            console.log("[Cron] No patients to delete.");
-          }
-        } catch (err) {
-          console.error("[Cron] Error deleting patients:", err);
-        }
-      }, {
-        timezone: "Etc/GMT-1" // GMT+1 without DST
-      });
-      console.log("[Server] Cron job for deleting patients scheduled at midnight GMT+1");
-    }
-  } catch (err) {
-    console.error("[Server] Failed to setup cron job:", err);
-  }
-
-  // Use Helmet for security headers (HSTS, NoSniff, XSS protection, etc.)
-  // We disable contentSecurityPolicy in dev mode to allow Vite to work seamlessly
-  app.use(helmet({
-    contentSecurityPolicy: process.env.NODE_ENV === "production" ? undefined : false,
-  }));
-
-  // Setup Rate Limiter to prevent brute-force and DDoS attacks
-  const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-    message: { status: "error", message: "Too many requests from this IP, please try again after 15 minutes." }
-  });
-
-  // Apply the rate limiting middleware to API calls only
-  app.use("/api/", apiLimiter);
+  const PORT = 3000;
 
   // Support JSON payloads
   app.use(express.json());
