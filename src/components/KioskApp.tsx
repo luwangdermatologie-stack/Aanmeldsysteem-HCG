@@ -33,9 +33,11 @@ const playTone = (type: 'tap' | 'success' | 'warn') => {
 
 export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, isFullscreen = false }: KioskAppProps) {
   const [lang, setLang] = useState<LanguageCode>('NL');
-  const [currentScreen, setCurrentScreen] = useState<'home' | 'f1_details' | 'f1_appointment' | 'f1_success' | 'f2_choice' | 'f2_patient_form' | 'f2_success'>('home');
+  const [currentScreen, setCurrentScreen] = useState<'home' | 'f1_details' | 'f1_appointment' | 'f1_success' | 'f2_choice' | 'f2_patient_form' | 'f2_success' | 'help_success'>('home');
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [currentTimeStr, setCurrentTimeStr] = useState('');
+
+  const [helpCooldown, setHelpCooldown] = useState(false);
 
   // Form Fields
   const [firstName, setFirstName] = useState('');
@@ -70,7 +72,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
 
   // Handle countdown timers for success screens
   useEffect(() => {
-    if (currentScreen === 'f1_success' || currentScreen === 'f2_success') {
+    if (currentScreen === 'f1_success' || currentScreen === 'f2_success' || currentScreen === 'help_success') {
       const targetSec = currentScreen === 'f1_success' ? 10 : 15;
       setCountdown(targetSec);
       
@@ -89,6 +91,28 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [currentScreen]);
+
+  const handleHelpClick = () => {
+    if (helpCooldown) return;
+    playTone('tap');
+    
+    onTeamsNotify(
+      "🆘 **NOODOPROEP / HELP**: Er is hulp gevraagd aan de kiosk door een bezoeker!", 
+      undefined, 
+      { 
+        type: "Emergency Help / Assistentie Nodig", 
+        tijdstip: currentTimeStr,
+        bron: "Kiosk Voorpagina"
+      }
+    );
+    
+    setHelpCooldown(true);
+    setCurrentScreen('help_success');
+    
+    setTimeout(() => {
+      setHelpCooldown(false);
+    }, 15000); // 15s cooldown independent of screen state
+  };
 
   const handleResetToHome = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -353,6 +377,18 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 <span className="text-[11px] font-normal text-text-sub mt-1.5 opacity-80">
                   Aangemeld voor inlichtingen of levering
                 </span>
+              </button>
+            </div>
+
+            <div className="mt-6 flex justify-center w-full">
+              <button
+                id="btn-kiosk-help"
+                onClick={handleHelpClick}
+                disabled={helpCooldown}
+                className="group relative flex items-center justify-center gap-2 p-3 rounded-xl border border-border-soft hover:border-button-active bg-white hover:bg-accent-peach/20 text-text-sub hover:text-text-main font-medium text-sm shadow-sm transition-all duration-200 cursor-pointer w-full max-w-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Info className="h-4 w-4" />
+                <span>Hulp nodig? Vraag assistentie.</span>
               </button>
             </div>
           </div>
@@ -737,6 +773,33 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
             
             <p className="text-text-main text-sm leading-relaxed max-w-md mx-auto mb-6">
               {firstName === 'Bezoeker/Leverancier' ? t.nonPatientSuccessMsg : t.noApptSuccessMsg}
+            </p>
+
+            <div className="text-xs text-text-sub">
+              <p>{t.redirectTimerText.replace('{seconds}', countdown.toString())}</p>
+              <button 
+                onClick={handleResetToHome}
+                className="mt-2 text-xs underline hover:text-text-main cursor-pointer"
+              >
+                Terug naar startscherm
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* HELP SUCCESS PAGE */}
+        {currentScreen === 'help_success' && (
+          <div className="w-full max-w-xl text-center animate-fade-in py-4">
+            <div className="h-16 w-16 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-pink-200">
+              <Info className="h-10 w-10 text-pink-600" />
+            </div>
+
+            <h2 className="text-2xl font-sans font-bold text-text-main mb-2">
+              Hulp is onderweg
+            </h2>
+            
+            <p className="text-text-main text-sm leading-relaxed max-w-md mx-auto mb-6">
+              Een medewerker is op de hoogte gebracht en komt u zo snel mogelijk helpen. Gelieve even te wachten.
             </p>
 
             <div className="text-xs text-text-sub">

@@ -74,6 +74,20 @@
         "messagePreview": { "type": "string" }
       },
       "required": ["id", "timestamp", "status", "messagePreview"]
+    },
+    "timesheet": {
+      "title": "Timesheet",
+      "description": "Staff clock in and out records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "staffId": { "type": "string" },
+        "staffName": { "type": "string" },
+        "clockIn": { "type": "string" },
+        "clockOut": { "type": "string", "nullable": true },
+        "date": { "type": "string" }
+      },
+      "required": ["id", "staffId", "staffName", "clockIn", "date"]
     }
   },
   "firestore": {
@@ -96,6 +110,10 @@
     "notifications": {
       "schema": "teamsNotification",
       "description": "Audit trail of Teams notifications sent"
+    },
+    "timesheets": {
+      "schema": "timesheet",
+      "description": "Staff clock-in/out records"
     }
   }
 }

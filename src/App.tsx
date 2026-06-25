@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification } from './types';
+import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timesheet } from './types';
 import KioskApp from './components/KioskApp';
 import AdminDashboard from './components/AdminDashboard';
 import { 
@@ -21,7 +21,7 @@ import {
   HeartPulse
 } from 'lucide-react';
 import { db, initializeDatabaseIfEmpty, handleFirestoreError, OperationType, sanitizeForFirestore } from './firebase';
-import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, getDocs } from 'firebase/firestore';
 
 const INITIAL_DOCTORS: Doctor[] = [
   { id: 'dr-mertens', name: 'Dr. Elisabeth Mertens', specialty: 'Algemene Dermatologie', waitingRoom: 'Gelijkvloers', isAvailable: true, avatarColor: 'bg-teal-500' },
@@ -115,6 +115,7 @@ export default function App() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [staff, setStaff] = useState<ActiveStaff[]>([]);
+  const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [systemConfig, setSystemConfig] = useState<SystemConfig>({
     currentDagdeel: 'ochtend',
     activeStaffId: 'staff-karina',
@@ -125,6 +126,42 @@ export default function App() {
   // Initialize DB once on mount
   useEffect(() => {
     initializeDatabaseIfEmpty();
+  }, []);
+
+  // Daily patient cleanup (Midnight GMT+1)
+  useEffect(() => {
+    const checkAndClearDaily = async () => {
+      const now = new Date();
+      // GMT+1 is UTC+1. Add 1 hour to current time to get the GMT+1 time
+      const gmt1Date = new Date(now.getTime() + 1 * 60 * 60 * 1000);
+      const gmt1DateStr = gmt1Date.toISOString().slice(0, 10);
+      const gmt1Hour = gmt1Date.getUTCHours();
+      
+      const lastClearStr = localStorage.getItem('last_clear_date_gmt1');
+
+      // If it's 00:xx in GMT+1, and we haven't cleared today
+      if (gmt1Hour === 0 && lastClearStr !== gmt1DateStr) {
+        try {
+          const snapshot = await getDocs(collection(db, 'patients'));
+          if (!snapshot.empty) {
+            const batch = writeBatch(db);
+            snapshot.forEach(doc => {
+              batch.delete(doc.ref);
+            });
+            await batch.commit();
+          }
+          localStorage.setItem('last_clear_date_gmt1', gmt1DateStr);
+          console.log("Daily patient cleanup completed (GMT+1 Midnight).");
+        } catch (err) {
+          console.error("Daily patient cleanup failed:", err);
+        }
+      }
+    };
+
+    // Check once on mount, then every 5 minutes
+    checkAndClearDaily();
+    const interval = setInterval(checkAndClearDaily, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   // Sync Patients
@@ -139,6 +176,20 @@ export default function App() {
       setPatients(patientList);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'patients');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync Timesheets
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'timesheets'), (snapshot) => {
+      const tsList: Timesheet[] = [];
+      snapshot.forEach((doc) => {
+        tsList.push(doc.data() as Timesheet);
+      });
+      setTimesheets(tsList);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'timesheets');
     });
     return () => unsubscribe();
   }, []);
@@ -382,6 +433,22 @@ export default function App() {
     }
   };
 
+  const handleUpdateTimesheet = async (timesheet: Timesheet) => {
+    try {
+      await setDoc(doc(db, 'timesheets', timesheet.id), sanitizeForFirestore(timesheet));
+    } catch (err) {
+      console.error("Error updating timesheet in firestore:", err);
+    }
+  };
+
+  const handleDeleteTimesheet = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'timesheets', id));
+    } catch (err) {
+      console.error("Error deleting timesheet in firestore:", err);
+    }
+  };
+
   const handleResetEntireData = async () => {
     if (confirm("🚨 Dit zal alle opgeslagen cliënten en instellingen volledig terugzetten naar de fabrieksinstellingen. Doorgaan?")) {
       try {
@@ -494,6 +561,7 @@ export default function App() {
             patients={patients}
             doctors={doctors}
             activeStaffList={staff}
+            timesheets={timesheets}
             systemConfig={systemConfig}
             notifications={notifications}
             onUpdateConfig={async (conf) => {
@@ -509,6 +577,8 @@ export default function App() {
             onResetDagdeel={handleResetDagdeel}
             onClearNotificationLog={handleClearNotifications}
             onAddSimulatedPatient={handleAddRandomSimulatedPatient}
+            onUpdateTimesheet={handleUpdateTimesheet}
+            onDeleteTimesheet={handleDeleteTimesheet}
           />
         </div>
       </div>
@@ -632,6 +702,7 @@ export default function App() {
                   patients={patients}
                   doctors={doctors}
                   activeStaffList={staff}
+                  timesheets={timesheets}
                   systemConfig={systemConfig}
                   notifications={notifications}
                   onUpdateConfig={handleUpdateConfig}
@@ -641,6 +712,8 @@ export default function App() {
                   onResetDagdeel={handleResetDagdeel}
                   onClearNotificationLog={handleClearNotifications}
                   onAddSimulatedPatient={handleAddRandomSimulatedPatient}
+                  onUpdateTimesheet={handleUpdateTimesheet}
+                  onDeleteTimesheet={handleDeleteTimesheet}
                 />
               </div>
             </div>
@@ -680,6 +753,7 @@ export default function App() {
                 patients={patients}
                 doctors={doctors}
                 activeStaffList={staff}
+                timesheets={timesheets}
                 systemConfig={systemConfig}
                 notifications={notifications}
                 onUpdateConfig={handleUpdateConfig}
@@ -689,6 +763,8 @@ export default function App() {
                 onResetDagdeel={handleResetDagdeel}
                 onClearNotificationLog={handleClearNotifications}
                 onAddSimulatedPatient={handleAddRandomSimulatedPatient}
+                onUpdateTimesheet={handleUpdateTimesheet}
+                onDeleteTimesheet={handleDeleteTimesheet}
               />
             </div>
           </div>
