@@ -19,19 +19,11 @@ import {
 } from 'firebase/firestore';
 import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification } from './types';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAWYqaDYs5RZ0mndz453VRAcfOIEnUbPWM",
-  authDomain: "fir-test-1-4b2c2.firebaseapp.com",
-  projectId: "fir-test-1-4b2c2",
-  storageBucket: "fir-test-1-4b2c2.firebasestorage.app",
-  messagingSenderId: "614909012167",
-  appId: "1:614909012167:web:bc386e1405e71124b3b6e2",
-  measurementId: "G-91QCXJMQ7V"
-};
+import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 // Keep the database initialized properly
-export const db = getFirestore(app);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth();
 
 export enum OperationType {
