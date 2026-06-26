@@ -353,7 +353,7 @@ export default function AdminDashboard({
     .filter(p => {
       const matchSearch = 
         `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        p.nationalRegistryNum.includes(searchTerm);
+        (p.nationalRegistryNum && p.nationalRegistryNum.includes(searchTerm));
       const matchDoc = doctorFilter === 'all' || p.doctorId === doctorFilter;
       const matchRoom = roomFilter === 'all' || p.waitingRoom === roomFilter;
       const matchStatus = statusFilter === 'all' || p.status === statusFilter;
@@ -365,8 +365,8 @@ export default function AdminDashboard({
       let valB = '';
       
       if (sortBy === 'arrivalTime') {
-        valA = a.arrivalTime;
-        valB = b.arrivalTime;
+        valA = a.arrivalTime || '';
+        valB = b.arrivalTime || '';
       } else {
         valA = a.appointmentTime || '99:99';
         valB = b.appointmentTime || '99:99';
@@ -1506,8 +1506,12 @@ export default function AdminDashboard({
                           if (selectedTsStaff !== 'all' && ts.staffId !== selectedTsStaff) return false;
                           return ts.date.startsWith(selectedTsMonth);
                         }).sort((a, b) => {
-                          if (a.date !== b.date) return b.date.localeCompare(a.date);
-                          return b.clockIn.localeCompare(a.clockIn);
+                          const dateA = a.date || '';
+                          const dateB = b.date || '';
+                          if (dateA !== dateB) return dateB.localeCompare(dateA);
+                          const clockInA = a.clockIn || '';
+                          const clockInB = b.clockIn || '';
+                          return clockInB.localeCompare(clockInA);
                         });
 
                         let totalMinutes = 0;
