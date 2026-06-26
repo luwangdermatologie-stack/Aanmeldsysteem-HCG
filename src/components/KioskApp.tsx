@@ -73,7 +73,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
   // Handle countdown timers for success screens
   useEffect(() => {
     if (currentScreen === 'f1_success' || currentScreen === 'f2_success' || currentScreen === 'help_success') {
-      const targetSec = currentScreen === 'f1_success' ? 10 : 15;
+      const targetSec = 30;
       setCountdown(targetSec);
       
       timerRef.current = setInterval(() => {
@@ -127,6 +127,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
     setIsPatientLate(false);
     setCurrentScreen('home');
     setLangMenuOpen(false);
+    setLang('NL');
   };
 
   const handleLanguageSelect = (code: LanguageCode) => {
@@ -388,7 +389,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 className="group relative flex items-center justify-center gap-2 p-3 rounded-xl border border-border-soft hover:border-button-active bg-white hover:bg-accent-peach/20 text-text-sub hover:text-text-main font-medium text-sm shadow-sm transition-all duration-200 cursor-pointer w-full max-w-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Info className="h-4 w-4" />
-                <span>Hulp nodig? Vraag assistentie.</span>
+                <span>{t.helpBtnText}</span>
               </button>
             </div>
           </div>
@@ -530,15 +531,40 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
               <form onSubmit={handleConfirmF1Appointment} className="space-y-4">
                 <div className="flex flex-col">
                   <label className="text-xs font-semibold text-text-main mb-1">{t.apptTimeLabel}</label>
-                  <div className="relative">
-                    <input
-                      id="input-kiosk-f1-time"
-                      type="time"
-                      value={appointmentTime}
-                      onChange={(e) => setAppointmentTime(e.target.value)}
+                  <div className="flex gap-2">
+                    <select
+                      id="input-kiosk-f1-time-hr"
+                      value={appointmentTime ? appointmentTime.split(':')[0] : ''}
+                      onChange={(e) => {
+                        const min = (appointmentTime && appointmentTime.split(':')[1]) ? appointmentTime.split(':')[1] : '00';
+                        setAppointmentTime(`${e.target.value}:${min}`);
+                      }}
                       className="p-2.5 w-full text-base rounded-lg border border-border-soft bg-white focus:outline-none focus:border-button-active focus:ring-1 focus:ring-button-active"
                       required
-                    />
+                    >
+                      <option value="" disabled>Uur</option>
+                      {Array.from({ length: 24 }).map((_, i) => {
+                        const v = i.toString().padStart(2, '0');
+                        return <option key={`hr-${v}`} value={v}>{v}</option>;
+                      })}
+                    </select>
+                    <span className="text-xl font-bold self-center text-text-sub">:</span>
+                    <select
+                      id="input-kiosk-f1-time-min"
+                      value={appointmentTime ? appointmentTime.split(':')[1] : ''}
+                      onChange={(e) => {
+                        const hr = (appointmentTime && appointmentTime.split(':')[0]) ? appointmentTime.split(':')[0] : '08';
+                        setAppointmentTime(`${hr}:${e.target.value}`);
+                      }}
+                      className="p-2.5 w-full text-base rounded-lg border border-border-soft bg-white focus:outline-none focus:border-button-active focus:ring-1 focus:ring-button-active"
+                      required
+                    >
+                      <option value="" disabled>Min</option>
+                      {Array.from({ length: 12 }).map((_, i) => {
+                        const v = (i * 5).toString().padStart(2, '0');
+                        return <option key={`min-${v}`} value={v}>{v}</option>;
+                      })}
+                    </select>
                   </div>
                 </div>
 
@@ -620,7 +646,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 onClick={handleResetToHome}
                 className="mt-2.5 underline hover:text-text-main cursor-pointer text-[11px] font-semibold"
               >
-                Ga direct terug naar start
+                {t.backBtn}
               </button>
             </div>
           </div>
@@ -781,7 +807,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 onClick={handleResetToHome}
                 className="mt-2 text-xs underline hover:text-text-main cursor-pointer"
               >
-                Terug naar startscherm
+                {t.backBtn}
               </button>
             </div>
           </div>
@@ -795,11 +821,11 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
             </div>
 
             <h2 className="text-2xl font-sans font-bold text-text-main mb-2">
-              Hulp is onderweg
+              {t.noApptSuccessTitle}
             </h2>
             
             <p className="text-text-main text-sm leading-relaxed max-w-md mx-auto mb-6">
-              Een medewerker is op de hoogte gebracht en komt u zo snel mogelijk helpen. Gelieve even te wachten.
+              {t.noApptSuccessMsg}
             </p>
 
             <div className="text-xs text-text-sub">
@@ -808,7 +834,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 onClick={handleResetToHome}
                 className="mt-2 text-xs underline hover:text-text-main cursor-pointer"
               >
-                Terug naar startscherm
+                {t.backBtn}
               </button>
             </div>
           </div>

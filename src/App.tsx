@@ -652,10 +652,10 @@ export default function App() {
         
         {/* VIEW 1: DUAL-VIEW SPLIT LIVE SYNC SIMULATION */}
         {viewMode === 'split' && (
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch w-full">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch w-full">
             
             {/* LEFT 5 COLUMNS: THE TABLET KIOSK WRAPPED IN BEAUTIFUL IPAD HARDWARE MOCKUP */}
-            <div className="xl:col-span-12 xl:col-span-5 flex flex-col justify-center items-center">
+            <div className="md:col-span-5 flex flex-col justify-center items-center">
               
               {/* Device Header label */}
               <div className="text-center font-mono text-[11px] text-slate-400 mb-2.5 flex items-center gap-2">
@@ -690,9 +690,9 @@ export default function App() {
             </div>
 
             {/* RIGHT 7 COLUMNS: ENTIRE WEB-BASED ADMINISTRATION PANEL */}
-            <div className="xl:col-span-12 xl:col-span-7 flex flex-col justify-stretch">
+            <div className="md:col-span-7 flex flex-col justify-stretch overflow-hidden">
               {/* Web Browser indicator */}
-              <div className="text-center xl:text-left font-mono text-[11px] text-indigo-400 mb-2.5 flex items-center justify-center xl:justify-start gap-2">
+              <div className="text-center md:text-left font-mono text-[11px] text-indigo-400 mb-2.5 flex items-center justify-center md:justify-start gap-2">
                 <Monitor className="h-4.5 w-4.5" />
                 SECRETARIAAT BROWSER (DERMATOLOGO-ADMIN SERVICES)
               </div>
