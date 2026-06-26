@@ -646,7 +646,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 onClick={handleResetToHome}
                 className="mt-2.5 underline hover:text-text-main cursor-pointer text-[11px] font-semibold"
               >
-                {t.backBtn}
+                {t.returnToStartBtn}
               </button>
             </div>
           </div>
@@ -807,7 +807,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 onClick={handleResetToHome}
                 className="mt-2 text-xs underline hover:text-text-main cursor-pointer"
               >
-                {t.backBtn}
+                {t.returnToStartBtn}
               </button>
             </div>
           </div>
@@ -834,7 +834,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 onClick={handleResetToHome}
                 className="mt-2 text-xs underline hover:text-text-main cursor-pointer"
               >
-                {t.backBtn}
+                {t.returnToStartBtn}
               </button>
             </div>
           </div>

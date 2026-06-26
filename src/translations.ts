@@ -22,6 +22,7 @@ export interface TranslationSet {
   idCardLabel: string;
   nextBtn: string;
   backBtn: string;
+  returnToStartBtn: string;
   requiredFieldsError: string;
   invalidFormatError: string;
 
@@ -79,6 +80,7 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     idCardLabel: "Identiteitskaartnummer (Optioneel)",
     nextBtn: "Volgende",
     backBtn: "Vorige",
+    returnToStartBtn: "Keer terug naar beginscherm",
     requiredFieldsError: "Gelieve alle verplichte velden (*) in te vullen.",
     invalidFormatError: "Ongeldige indeling.",
     apptDetailsTitle: "Tijdstip & Dermatoloog",
@@ -120,6 +122,7 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     idCardLabel: "Identity Card Number (Optional)",
     nextBtn: "Next",
     backBtn: "Back",
+    returnToStartBtn: "Return to start screen",
     requiredFieldsError: "Please fill in all required fields (*).",
     invalidFormatError: "Invalid format.",
     apptDetailsTitle: "Appointment Details",
@@ -161,6 +164,7 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     idCardLabel: "Numéro de carte d'identité (Optionnel)",
     nextBtn: "Suivant",
     backBtn: "Retour",
+    returnToStartBtn: "Retour à l'écran d'accueil",
     requiredFieldsError: "Veuillez remplir tous les champs obligatoires (*).",
     invalidFormatError: "Format invalide.",
     apptDetailsTitle: "Détails du Rendez-vous",
@@ -202,6 +206,7 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     idCardLabel: "Kimlik Kartı Numarası (İsteğe Bağlı)",
     nextBtn: "İleri",
     backBtn: "Geri",
+    returnToStartBtn: "Başlangıç ekranına dön",
     requiredFieldsError: "Lütfen tüm zorunlu alanları (*) doldurun.",
     invalidFormatError: "Geçersiz biçim.",
     apptDetailsTitle: "Randevu Detayları",
@@ -243,6 +248,7 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     idCardLabel: "رقم بطاقة الهوية (اختياري)",
     nextBtn: "التالي",
     backBtn: "السابق",
+    returnToStartBtn: "العودة إلى شاشة البداية",
     requiredFieldsError: "يرجى تعبئة جميع الحقول المطلوبة (*).",
     invalidFormatError: "صيغة غير صالحة.",
     apptDetailsTitle: "تفاصيل الموعد",
