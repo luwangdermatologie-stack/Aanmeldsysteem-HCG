@@ -97,10 +97,10 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
     playTone('tap');
     
     onTeamsNotify(
-      "🆘 **NOODOPROEP / HELP**: Er is hulp gevraagd aan de kiosk door een bezoeker!", 
+      "🆘 **HELP**: Er is hulp gevraagd aan de kiosk door een bezoeker!", 
       undefined, 
       { 
-        type: "Emergency Help / Assistentie Nodig", 
+        type: "Help / Assistentie Nodig", 
         tijdstip: currentTimeStr,
         bron: "Kiosk Voorpagina"
       }

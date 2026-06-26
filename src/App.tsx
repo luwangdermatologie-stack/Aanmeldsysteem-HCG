@@ -97,8 +97,16 @@ export default function App() {
     if (view === 'kiosk' || view === 'admin' || view === 'split') {
       return view;
     }
-    const stored = localStorage.getItem('derm_reception_viewmode');
-    return (stored as 'split' | 'kiosk' | 'admin') || 'split';
+    
+    try {
+      const stored = localStorage.getItem('derm_reception_viewmode');
+      if (stored === 'kiosk' || stored === 'admin' || stored === 'split') {
+        return stored;
+      }
+    } catch (e) {
+      console.warn("localStorage not accessible", e);
+    }
+    return 'split';
   });
 
   const [isLocked] = useState(() => {
@@ -108,7 +116,11 @@ export default function App() {
 
   // Persist viewMode
   useEffect(() => {
-    localStorage.setItem('derm_reception_viewmode', viewMode);
+    try {
+      localStorage.setItem('derm_reception_viewmode', viewMode);
+    } catch (e) {
+      // Ignore
+    }
   }, [viewMode]);
   
   // State synchronized with Firebase Firestore
@@ -137,7 +149,12 @@ export default function App() {
       const gmt1DateStr = gmt1Date.toISOString().slice(0, 10);
       const gmt1Hour = gmt1Date.getUTCHours();
       
-      const lastClearStr = localStorage.getItem('last_clear_date_gmt1');
+      let lastClearStr = null;
+      try {
+        lastClearStr = localStorage.getItem('last_clear_date_gmt1');
+      } catch (e) {
+        // Ignore
+      }
 
       // If it's 00:xx in GMT+1, and we haven't cleared today
       if (gmt1Hour === 0 && lastClearStr !== gmt1DateStr) {
@@ -150,7 +167,9 @@ export default function App() {
             });
             await batch.commit();
           }
-          localStorage.setItem('last_clear_date_gmt1', gmt1DateStr);
+          try {
+            localStorage.setItem('last_clear_date_gmt1', gmt1DateStr);
+          } catch (e) {}
           console.log("Daily patient cleanup completed (GMT+1 Midnight).");
         } catch (err) {
           console.error("Daily patient cleanup failed:", err);
