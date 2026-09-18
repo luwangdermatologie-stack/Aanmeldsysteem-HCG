@@ -28,13 +28,18 @@ import {
   Info,
   Check,
   X,
-  UserCheck
+  UserCheck,
+  RefreshCw
 } from 'lucide-react';
+import { ActiveStaff, Doctor } from '../../types';
 
 interface StaffManagementSubmoduleProps {
   staffList: StaffMember[];
   leaveRequests: LeaveRequest[];
   comments: GeneralComment[];
+  activeStaffList?: ActiveStaff[];
+  doctors?: Doctor[];
+  onSyncStaff?: () => Promise<any>;
   onAddStaffMember: (staff: Omit<StaffMember, 'id'>) => Promise<void>;
   onUpdateStaffMember: (staffId: string, updates: Partial<StaffMember>) => Promise<void>;
   onCascadeDeleteStaffMember: (staffId: string) => Promise<void>;
@@ -44,6 +49,9 @@ export const StaffManagementSubmodule: React.FC<StaffManagementSubmoduleProps> =
   staffList,
   leaveRequests,
   comments,
+  activeStaffList,
+  doctors: inputDoctors,
+  onSyncStaff,
   onAddStaffMember,
   onUpdateStaffMember,
   onCascadeDeleteStaffMember
@@ -54,7 +62,22 @@ export const StaffManagementSubmodule: React.FC<StaffManagementSubmoduleProps> =
   const [color, setColor] = useState(STAFF_COLOR_PALETTE[staffList.length % STAFF_COLOR_PALETTE.length].hex);
   const [scheduleTemplate, setScheduleTemplate] = useState<'fulltime' | 'empty'>('fulltime');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
+  const handleManualSync = async () => {
+    if (!onSyncStaff) return;
+    setIsSyncing(true);
+    try {
+      await onSyncStaff();
+      setActionSuccess('Personeel succesvol gesynchroniseerd met Configuratie & Reset!');
+      setTimeout(() => setActionSuccess(null), 4000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Edit staff modal state
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
@@ -157,13 +180,28 @@ export const StaffManagementSubmodule: React.FC<StaffManagementSubmoduleProps> =
       {/* 1. TOP: ADD NEW STAFF MEMBER CARD */}
       {/* ========================================================================= */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-        <div className="flex items-center gap-2.5 pb-3 mb-4 border-b border-slate-100">
-          <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
-            <UserPlus className="w-4 h-4" />
+        <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100 flex-wrap gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+              <UserPlus className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-800 text-sm">Nieuw Personeelslid Toevoegen</h3>
+              <p className="text-[11px] text-slate-500">Automatisch gesynchroniseerd met Kiosk & Configuratie</p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-bold text-slate-800 text-sm">Nieuw Personeelslid Toevoegen</h3>
-          </div>
+          {onSyncStaff && (
+            <button
+              type="button"
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              title="Synchroniseer met personeel en artsen uit Configuratie & Reset"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-indigo-600' : 'text-indigo-500'}`} />
+              <span>{isSyncing ? 'Bezig met synchroniseren...' : 'Synchroniseer met Configuratie'}</span>
+            </button>
+          )}
         </div>
 
         <form onSubmit={handleAddStaff} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">

@@ -11,8 +11,17 @@ import {
   WeeklySchedule,
   DayOfWeekKey,
   GeneralComment,
-  TodoItem
+  TodoItem,
+  ActiveStaff,
+  Doctor
 } from '../types';
+import { db } from '../firebase';
+import {
+  collection,
+  doc,
+  getDocs,
+  writeBatch
+} from 'firebase/firestore';
 
 export const DAYS_OF_WEEK: { key: DayOfWeekKey; label: string; short: string }[] = [
   { key: 'maandag', label: 'Maandag', short: 'Ma' },
@@ -682,3 +691,182 @@ export function getMonthCalendarWeeks(
 
   return weeks;
 }
+
+export interface StaffSyncResult {
+  addedToLeave: number;
+  updatedInLeave: number;
+  addedToConfig: number;
+  totalLeaveStaff: number;
+}
+
+/**
+ * Synchronizes staff members between Configuratie & Reset (ActiveStaff[] and Doctor[])
+ * and Personeelsbeheer in Verlofplanning (StaffMember[] in Firestore collection 'leave_staff').
+ */
+export async function syncStaffBetweenConfigAndLeave(
+  activeStaffList: ActiveStaff[],
+  doctors: Doctor[] = []
+): Promise<StaffSyncResult> {
+  const result: StaffSyncResult = {
+    addedToLeave: 0,
+    updatedInLeave: 0,
+    addedToConfig: 0,
+    totalLeaveStaff: 0
+  };
+
+  try {
+    // 1. Fetch current leave_staff docs
+    const leaveStaffSnap = await getDocs(collection(db, 'leave_staff'));
+    const currentLeaveStaff: StaffMember[] = [];
+    leaveStaffSnap.forEach(d => {
+      currentLeaveStaff.push({ ...d.data(), id: d.id } as StaffMember);
+    });
+
+    // If completely empty, fallback to INITIAL_LEAVE_STAFF as base
+    if (currentLeaveStaff.length === 0) {
+      INITIAL_LEAVE_STAFF.forEach(s => currentLeaveStaff.push({ ...s }));
+    }
+
+    const batch = writeBatch(db);
+    let batchHasOperations = false;
+
+    // 2. Synchronize activeStaffList (Balie-medewerkers / Personeelsleden) -> leave_staff
+    for (const st of activeStaffList) {
+      if (!st.name || !st.name.trim()) continue;
+      const normalizedName = st.name.trim().toLowerCase();
+
+      // Find existing match by ID, by activeStaffId, or by exact normalized name
+      const existing = currentLeaveStaff.find(
+        ls => ls.id === st.id ||
+              ls.activeStaffId === st.id ||
+              ls.name.trim().toLowerCase() === normalizedName
+      );
+
+      if (existing) {
+        // Check if update is needed
+        const needsUpdate =
+          existing.name.trim() !== st.name.trim() ||
+          existing.jobTitle !== st.role ||
+          existing.activeStaffId !== st.id;
+
+        if (needsUpdate) {
+          batch.set(
+            doc(db, 'leave_staff', existing.id),
+            {
+              ...existing,
+              name: st.name.trim(),
+              jobTitle: st.role,
+              activeStaffId: st.id
+            },
+            { merge: true }
+          );
+          existing.name = st.name.trim();
+          existing.jobTitle = st.role;
+          existing.activeStaffId = st.id;
+          result.updatedInLeave++;
+          batchHasOperations = true;
+        }
+      } else {
+        // Add new staff member to leave_staff
+        const isDocRole =
+          st.role.toLowerCase().includes('arts') ||
+          st.role.toLowerCase().includes('dokter') ||
+          st.name.toLowerCase().startsWith('dr.');
+
+        const newStaffMember: StaffMember = {
+          id: st.id,
+          name: st.name.trim(),
+          role: isDocRole ? 'arts' : 'verpleegkundige',
+          jobTitle: st.role,
+          activeStaffId: st.id,
+          schedule: JSON.parse(JSON.stringify(DEFAULT_FULLTIME_SCHEDULE)),
+          color: STAFF_COLOR_PALETTE[(currentLeaveStaff.length + result.addedToLeave) % STAFF_COLOR_PALETTE.length].hex
+        };
+
+        batch.set(doc(db, 'leave_staff', newStaffMember.id), newStaffMember);
+        currentLeaveStaff.push(newStaffMember);
+        result.addedToLeave++;
+        batchHasOperations = true;
+      }
+    }
+
+    // 3. Synchronize doctors (Dermatologen) -> leave_staff
+    for (const dr of doctors) {
+      if (!dr.name || !dr.name.trim()) continue;
+      const normalizedName = dr.name.trim().toLowerCase();
+
+      const existing = currentLeaveStaff.find(
+        ls => ls.id === dr.id ||
+              ls.id === `staff-${dr.id}` ||
+              ls.name.trim().toLowerCase() === normalizedName
+      );
+
+      if (existing) {
+        if (existing.name.trim() !== dr.name.trim()) {
+          batch.set(
+            doc(db, 'leave_staff', existing.id),
+            {
+              ...existing,
+              name: dr.name.trim()
+            },
+            { merge: true }
+          );
+          existing.name = dr.name.trim();
+          result.updatedInLeave++;
+          batchHasOperations = true;
+        }
+      } else {
+        const newDocStaff: StaffMember = {
+          id: dr.id.startsWith('staff-') ? dr.id : `staff-${dr.id}`,
+          name: dr.name.trim(),
+          role: 'arts',
+          jobTitle: dr.specialty || 'Dermatoloog',
+          schedule: JSON.parse(JSON.stringify(DEFAULT_FULLTIME_SCHEDULE)),
+          color: STAFF_COLOR_PALETTE[(currentLeaveStaff.length + result.addedToLeave) % STAFF_COLOR_PALETTE.length].hex
+        };
+        batch.set(doc(db, 'leave_staff', newDocStaff.id), newDocStaff);
+        currentLeaveStaff.push(newDocStaff);
+        result.addedToLeave++;
+        batchHasOperations = true;
+      }
+    }
+
+    // 4. Reverse sync: if there are verpleegkundigen in leave_staff not present in activeStaffList
+    for (const ls of currentLeaveStaff) {
+      if (ls.role === 'verpleegkundige') {
+        const inActiveStaff = activeStaffList.some(
+          st => st.id === ls.id ||
+                st.id === ls.activeStaffId ||
+                st.name.trim().toLowerCase() === ls.name.trim().toLowerCase()
+        );
+        if (!inActiveStaff) {
+          const newActiveId = ls.activeStaffId || (ls.id.startsWith('staff-') ? ls.id : `staff-${ls.id}`);
+          const newActive: ActiveStaff = {
+            id: newActiveId,
+            name: ls.name.trim(),
+            role: ls.jobTitle || 'Verpleegkundige / Medewerker'
+          };
+          batch.set(doc(db, 'staff', newActive.id), newActive);
+          result.addedToConfig++;
+          batchHasOperations = true;
+        }
+      }
+    }
+
+    if (batchHasOperations) {
+      await batch.commit();
+    }
+
+    // Update local cache
+    try {
+      localStorage.setItem('derm_leave_staff_store', JSON.stringify(currentLeaveStaff));
+    } catch (e) {}
+
+    result.totalLeaveStaff = currentLeaveStaff.length;
+    return result;
+  } catch (err) {
+    console.error('Error synchronizing staff between config and leave:', err);
+    throw err;
+  }
+}
+

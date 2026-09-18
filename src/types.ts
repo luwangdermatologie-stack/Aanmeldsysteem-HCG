@@ -114,6 +114,8 @@ export interface StaffMember {
   id: string;
   name: string;
   role: LeaveRole;
+  jobTitle?: string; // e.g. "Hoofd Receptie & Balie" or "Secretariaat"
+  activeStaffId?: string; // Reference to ActiveStaff.id in Configuratie & Reset
   schedule: WeeklySchedule;
   color?: string; // Optional custom color hex or palette ID
 }

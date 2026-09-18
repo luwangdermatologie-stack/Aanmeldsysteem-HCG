@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timesheet } from './types';
 import KioskApp from './components/KioskApp';
 import AdminDashboard from './components/AdminDashboard';
 import PinLockModal from './components/PinLockModal';
 import { executeGdprAnonymization } from './services/gdprService';
 import { getAccessToken, backupTimesheetsToGoogleSheets } from './services/googleSheetsService';
+import { syncStaffBetweenConfigAndLeave } from './services/leaveService';
 import { 
   Monitor, 
   RotateCcw, 
@@ -427,6 +428,17 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Automatic Staff Synchronization on initial load between Configuratie & Reset and Verlofplanning
+  const initialSyncTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (!initialSyncTriggeredRef.current && staff.length > 0 && doctors.length > 0) {
+      initialSyncTriggeredRef.current = true;
+      syncStaffBetweenConfigAndLeave(staff, doctors).catch(err => {
+        console.warn("Background initial sync staff warning:", err);
+      });
+    }
+  }, [staff, doctors]);
+
   // Sync Config
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'config', 'system'), (snapshot) => {
@@ -618,13 +630,20 @@ export default function App() {
     try {
       const deleted = doctors.filter(dr => !updatedDoctors.some(u => u.id === dr.id));
       for (const dr of deleted) {
-        await deleteDoc(doc(db, 'doctors', dr.id));
+        await deleteDoc(doc(db, 'doctors', dr.id)).catch(() => {});
+        await deleteDoc(doc(db, 'leave_staff', dr.id)).catch(() => {});
+        await deleteDoc(doc(db, 'leave_staff', `staff-${dr.id}`)).catch(() => {});
       }
       const batch = writeBatch(db);
       updatedDoctors.forEach(dr => {
         batch.set(doc(db, 'doctors', dr.id), dr);
       });
       await batch.commit();
+
+      // Automatically sync with Verlofplanning
+      syncStaffBetweenConfigAndLeave(staff, updatedDoctors).catch(err => {
+        console.warn("Auto sync doctors after update warning:", err);
+      });
     } catch (err) {
       console.error("Error updating doctors in firestore:", err);
     }
@@ -634,13 +653,19 @@ export default function App() {
     try {
       const deleted = staff.filter(st => !updatedStaff.some(u => u.id === st.id));
       for (const st of deleted) {
-        await deleteDoc(doc(db, 'staff', st.id));
+        await deleteDoc(doc(db, 'staff', st.id)).catch(() => {});
+        await deleteDoc(doc(db, 'leave_staff', st.id)).catch(() => {});
       }
       const batch = writeBatch(db);
       updatedStaff.forEach(st => {
         batch.set(doc(db, 'staff', st.id), st);
       });
       await batch.commit();
+
+      // Automatically sync with Verlofplanning
+      syncStaffBetweenConfigAndLeave(updatedStaff, doctors).catch(err => {
+        console.warn("Auto sync staff after update warning:", err);
+      });
     } catch (err) {
       console.error("Error updating staff in firestore:", err);
     }
@@ -873,6 +898,9 @@ export default function App() {
               onRunGdprAnonymize={() => executeGdprAnonymization(systemConfig.gdprRetentionHours || 24)}
               onTeamsNotify={handleTeamsNotify}
               onSwitchView={(v) => handleRequestViewChange(v)}
+              onSyncStaff={async () => {
+                await syncStaffBetweenConfigAndLeave(staff, doctors);
+              }}
             />
           </div>
         )}

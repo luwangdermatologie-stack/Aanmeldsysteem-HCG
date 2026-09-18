@@ -8,6 +8,7 @@ import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timeshee
 import GoogleSheetsBackupSection from './GoogleSheetsBackupSection';
 import { LeavePlanningModule } from './leave/LeavePlanningModule';
 import { TeamsChatAndLogModule } from './TeamsChatAndLogModule';
+import { syncStaffBetweenConfigAndLeave } from '../services/leaveService';
 import { 
   Users, 
   Settings, 
@@ -57,6 +58,7 @@ interface AdminDashboardProps {
   onRunGdprAnonymize?: () => Promise<{ processed: number; anonymized: number }>;
   onTeamsNotify?: (messageText: string, target?: string, payload?: any) => Promise<boolean>;
   onSwitchView?: (view: 'kiosk' | 'split' | 'admin') => void;
+  onSyncStaff?: () => Promise<any>;
 }
 
 export default function AdminDashboard({
@@ -78,7 +80,8 @@ export default function AdminDashboard({
   onLockAdmin,
   onRunGdprAnonymize,
   onTeamsNotify,
-  onSwitchView
+  onSwitchView,
+  onSyncStaff
 }: AdminDashboardProps) {
   // Tabs and filters inside Admin
   const [activeTab, setActiveTab] = useState<'overview' | 'config' | 'timesheets' | 'leave'>('overview');
@@ -285,6 +288,25 @@ export default function AdminDashboard({
     setEditingDocId(null);
   };
 
+  const [isSyncingStaff, setIsSyncingStaff] = useState(false);
+
+  const handleSyncStaff = async () => {
+    setIsSyncingStaff(true);
+    try {
+      if (onSyncStaff) {
+        await onSyncStaff();
+      } else {
+        await syncStaffBetweenConfigAndLeave(activeStaffList, doctors);
+      }
+      showToast("Personeel succesvol gesynchroniseerd met Verlofplanning!", "success");
+    } catch (err) {
+      console.error("Staff sync error:", err);
+      showToast("Fout bij synchroniseren van personeel.", "warning");
+    } finally {
+      setIsSyncingStaff(false);
+    }
+  };
+
   const handleAddStaff = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStaffName.trim() || !newStaffRole.trim()) return;
@@ -293,9 +315,12 @@ export default function AdminDashboard({
       name: newStaffName.trim(),
       role: newStaffRole.trim()
     };
-    onUpdateStaff([...activeStaffList, newSt]);
+    const updated = [...activeStaffList, newSt];
+    onUpdateStaff(updated);
     setNewStaffName('');
     setNewStaffRole('');
+    syncStaffBetweenConfigAndLeave(updated, doctors).catch(err => console.warn(err));
+    showToast(`Medewerker ${newSt.name} toegevoegd en gesynchroniseerd met verlofplanning.`, "success");
   };
 
   const confirmDeleteStaff = (st: ActiveStaff) => {
@@ -313,7 +338,8 @@ export default function AdminDashboard({
     if (tempStaffId === staffToDelete.id && updated.length > 0) {
       setTempStaffId(updated[0].id);
     }
-    showToast(`Medewerker ${staffToDelete.name} is succesvol verwijderd uit het personeelsbestand.`, "success");
+    syncStaffBetweenConfigAndLeave(updated, doctors).catch(err => console.warn(err));
+    showToast(`Medewerker ${staffToDelete.name} is succesvol verwijderd uit het personeelsbestand en verlofplanning.`, "success");
     setStaffToDelete(null);
   };
 
@@ -339,6 +365,8 @@ export default function AdminDashboard({
     });
     onUpdateStaff(updated);
     setEditingStaffId(null);
+    syncStaffBetweenConfigAndLeave(updated, doctors).catch(err => console.warn(err));
+    showToast(`Gegevens bijgewerkt en gesynchroniseerd met verlofplanning.`, "success");
   };
 
   // Stats calculation
@@ -1331,8 +1359,21 @@ export default function AdminDashboard({
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
                     <div className="flex items-center gap-2">
                       <Users className="h-5 w-5 text-indigo-500" />
-                      <h3 className="font-bold text-slate-800 text-base">Medewerkersbeheer (Balie)</h3>
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-base leading-tight">Personeelsleden (Balie)</h3>
+                        <span className="text-[11px] text-slate-500 block">Gesynchroniseerd met Verlofplanning</span>
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={handleSyncStaff}
+                      disabled={isSyncingStaff}
+                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                      title="Synchroniseer alle balie-medewerkers en artsen direct met Personeelsbeheer in Verlofplanning"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isSyncingStaff ? 'animate-spin text-indigo-600' : 'text-indigo-500'}`} />
+                      <span>{isSyncingStaff ? 'Synchroniseren...' : 'Sync met Verlofplanning'}</span>
+                    </button>
                   </div>
 
                   {/* List of staff members */}
@@ -1836,7 +1877,12 @@ export default function AdminDashboard({
         {/* Tab 5: Verlofplanning Module */}
         {activeTab === 'leave' && (
           <div className="p-6">
-            <LeavePlanningModule />
+            <LeavePlanningModule
+              activeStaffList={activeStaffList}
+              doctors={doctors}
+              onUpdateStaff={onUpdateStaff}
+              onUpdateDoctors={onUpdateDoctors}
+            />
           </div>
         )}
 

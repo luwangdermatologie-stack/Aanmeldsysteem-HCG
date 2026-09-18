@@ -25,9 +25,11 @@ import {
   LeaveSlot,
   LeaveStatus,
   LeaveType,
-  WeeklySchedule
+  WeeklySchedule,
+  ActiveStaff,
+  Doctor
 } from '../../types';
-import { INITIAL_LEAVE_STAFF, getDefaultSampleLeaveRequests } from '../../services/leaveService';
+import { INITIAL_LEAVE_STAFF, getDefaultSampleLeaveRequests, syncStaffBetweenConfigAndLeave } from '../../services/leaveService';
 import { backupLeaveToGoogleSheets } from '../../services/leaveSheetsBackup';
 import { getAccessToken } from '../../services/googleSheetsService';
 import { WeekOverviewSubmodule } from './WeekOverviewSubmodule';
@@ -64,7 +66,19 @@ function sanitizeForFirestore(obj: any): any {
   }));
 }
 
-export const LeavePlanningModule: React.FC = () => {
+export interface LeavePlanningModuleProps {
+  activeStaffList?: ActiveStaff[];
+  doctors?: Doctor[];
+  onUpdateStaff?: (staff: ActiveStaff[]) => void;
+  onUpdateDoctors?: (doctors: Doctor[]) => void;
+}
+
+export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
+  activeStaffList,
+  doctors,
+  onUpdateStaff,
+  onUpdateDoctors
+}) => {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('week_overview');
 
   // Firestore & Local Cache Collections Data
@@ -739,6 +753,18 @@ export const LeavePlanningModule: React.FC = () => {
     });
     try {
       await setDoc(doc(db, 'leave_staff', newId), newStaff);
+      // Synchronize back to activeStaffList if verpleegkundige/staff
+      if (newStaff.role === 'verpleegkundige') {
+        const newActive: ActiveStaff = {
+          id: newId,
+          name: newStaff.name,
+          role: newStaff.jobTitle || 'Verpleegkundige / Medewerker'
+        };
+        await setDoc(doc(db, 'staff', newId), newActive).catch(() => {});
+        if (activeStaffList && onUpdateStaff) {
+          onUpdateStaff([...activeStaffList, newActive]);
+        }
+      }
     } catch (err) {
       console.warn('Firestore setDoc failed, retained local update:', err);
     }
@@ -754,6 +780,16 @@ export const LeavePlanningModule: React.FC = () => {
     });
     try {
       await updateDoc(doc(db, 'leave_staff', staffId), updates);
+      // Synchronize back to staff collection if name or jobTitle changed
+      if (updates.name || updates.jobTitle) {
+        const staffUpdates: Partial<ActiveStaff> = {};
+        if (updates.name) staffUpdates.name = updates.name;
+        if (updates.jobTitle) staffUpdates.role = updates.jobTitle;
+        await updateDoc(doc(db, 'staff', staffId), staffUpdates).catch(() => {});
+        if (activeStaffList && onUpdateStaff) {
+          onUpdateStaff(activeStaffList.map(s => s.id === staffId ? { ...s, ...staffUpdates } : s));
+        }
+      }
     } catch (err) {
       console.warn('Firestore updateDoc failed, retained local update:', err);
     }
@@ -763,8 +799,9 @@ export const LeavePlanningModule: React.FC = () => {
   const handleCascadeDeleteStaffMember = async (staffId: string) => {
     const batch = writeBatch(db);
 
-    // 1. Delete staff doc
+    // 1. Delete leave_staff doc AND staff doc
     batch.delete(doc(db, 'leave_staff', staffId));
+    batch.delete(doc(db, 'staff', staffId));
 
     // 2. Delete all leave requests for this staff
     const reqSnap = await getDocs(
@@ -783,6 +820,16 @@ export const LeavePlanningModule: React.FC = () => {
     });
 
     await batch.commit();
+
+    if (activeStaffList && onUpdateStaff) {
+      onUpdateStaff(activeStaffList.filter(s => s.id !== staffId));
+    }
+  };
+
+  const handleTriggerSyncStaff = async () => {
+    if (activeStaffList) {
+      return await syncStaffBetweenConfigAndLeave(activeStaffList, doctors || []);
+    }
   };
 
   // --- Trigger Google Sheets Backup ---
@@ -1034,6 +1081,9 @@ export const LeavePlanningModule: React.FC = () => {
           staffList={staffList}
           leaveRequests={leaveRequests}
           comments={comments}
+          activeStaffList={activeStaffList}
+          doctors={doctors}
+          onSyncStaff={activeStaffList ? handleTriggerSyncStaff : undefined}
           onAddStaffMember={handleAddStaffMember}
           onUpdateStaffMember={handleUpdateStaffMember}
           onCascadeDeleteStaffMember={handleCascadeDeleteStaffMember}
