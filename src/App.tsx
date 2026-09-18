@@ -769,140 +769,42 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen font-sans flex flex-col justify-between selection:bg-[#0071E3] selection:text-white relative ${
-      viewMode === 'kiosk' 
-        ? 'bg-[#f1f5f9] text-slate-800' 
-        : 'bg-[#0d1117] text-slate-100 overflow-x-hidden'
-    }`} id="applet-root">
+    <div className="min-h-screen font-sans flex flex-col selection:bg-[#0071E3] selection:text-white relative bg-[#f7f9fc] text-slate-800" id="applet-root">
       
-      {/* Dynamic Apple Ambient Glow Orbs in Background (only for split and admin views) */}
-      {viewMode !== 'kiosk' && (
-        <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-          <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/15 rounded-full blur-[120px]"></div>
-          <div className="absolute top-1/3 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-[140px]"></div>
-          <div className="absolute -bottom-40 left-1/3 w-96 h-96 bg-sky-500/10 rounded-full blur-[130px]"></div>
-        </div>
-      )}
-
-      {/* GLOBAL SIMULATION BAR - APPLE GLASS TOP HEADER (Hidden on clean kiosk unless unlocked/requested) */}
-      {!isLocked && (
-        <header className={`relative z-20 border-b px-4 sm:px-6 py-2.5 flex flex-col md:flex-row justify-between items-center gap-2.5 sticky top-0 ${
-          viewMode === 'kiosk'
-            ? 'bg-white/80 backdrop-blur-md border-slate-200 shadow-sm text-slate-800'
-            : 'apple-glass-dark border-white/10 shadow-2xl text-white'
-        }`}>
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-[#0071E3] to-[#42A5F5] p-0.5 shadow-sm flex items-center justify-center shrink-0">
-              <div className="h-full w-full bg-white/20 rounded-[10px] flex items-center justify-center">
-                <HeartPulse className="h-5 w-5 text-white" />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] tracking-wider uppercase font-semibold text-[#0071E3] bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
-                  Kiosk & Secretariaat
-                </span>
-              </div>
-              <h1 className={`text-sm sm:text-base font-bold tracking-tight flex items-center gap-2 ${
-                viewMode === 'kiosk' ? 'text-slate-900' : 'text-white'
-              }`}>
-                Huidcentrum Gent <span className={`${viewMode === 'kiosk' ? 'text-slate-400' : 'text-white/40'} font-normal text-xs`}>| Aanmeldsysteem</span>
-              </h1>
-            </div>
-          </div>
-
-          {/* View Mode toggles */}
-          <div className={`p-1 rounded-xl flex items-center gap-1 shadow-xs border ${
-            viewMode === 'kiosk' 
-              ? 'bg-slate-100/90 border-slate-200 text-slate-600' 
-              : 'bg-black/40 border-white/10 text-white backdrop-blur-xl'
-          }`}>
-            <button
-              id="view-toggle-kiosk"
-              onClick={() => handleRequestViewChange('kiosk')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
-                viewMode === 'kiosk' 
-                  ? 'bg-[#0071E3] text-white shadow-sm' 
-                  : 'hover:text-slate-900 hover:bg-white/40'
-              }`}
-            >
-              <Tablet className="h-3.5 w-3.5" />
-              <span>Kiosk (Volledig Scherm)</span>
-              {systemConfig.kioskLocked && (
-                <Lock className="h-3 w-3 text-amber-300 ml-0.5" />
-              )}
-            </button>
-
-            <button
-              id="view-toggle-split"
-              onClick={() => handleRequestViewChange('split')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
-                viewMode === 'split' 
-                  ? 'bg-[#0071E3] text-white shadow-sm' 
-                  : 'hover:text-slate-900 hover:bg-white/40'
-              }`}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              Dual-View
-            </button>
-            
-            <button
-              id="view-toggle-admin"
-              onClick={() => handleRequestViewChange('admin')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
-                viewMode === 'admin' 
-                  ? 'bg-[#0071E3] text-white shadow-sm' 
-                  : 'hover:text-slate-900 hover:bg-white/40'
-              }`}
-            >
-              <Monitor className="h-3.5 w-3.5" />
-              <span>Secretariaat Admin</span>
-              {systemConfig.kioskLocked && (
-                <span className="text-[10px] px-1 py-0.2 rounded bg-amber-400/20 text-amber-600 font-mono">PIN</span>
-              )}
-            </button>
-          </div>
-
-          {/* Diagnostic Actions */}
-          <div className="flex gap-2 items-center">
-            <button
-              onClick={handleResetEntireData}
-              title="Reset alle gegevens naar standaard"
-              className={`px-3 py-1.5 border rounded-lg transition duration-200 cursor-pointer text-xs flex items-center gap-1.5 ${
-                viewMode === 'kiosk'
-                  ? 'bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 border-slate-200'
-                  : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/70 hover:text-red-400'
-              }`}
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Reset Data
-            </button>
-          </div>
-        </header>
-      )}
-
-      {/* CORE WORKSPACE CONTENT PANEL */}
-      <main className={`relative z-10 flex-1 w-full flex flex-col justify-center ${
-        viewMode === 'kiosk' 
-          ? 'p-0 m-0 max-w-none h-full' 
-          : 'p-4 md:p-6 max-w-[1550px] mx-auto'
-      }`}>
+      {/* CORE WORKSPACE CONTENT PANEL - FULL SCREEN EDGE-TO-EDGE */}
+      <main className="relative z-10 flex-1 w-full flex flex-col justify-stretch p-0 m-0 max-w-none h-full min-h-screen">
         
-        {/* VIEW 1: DUAL-VIEW SPLIT LIVE SYNC SIMULATION */}
+        {/* VIEW 1: DUAL-VIEW SPLIT LIVE SYNC SIMULATION (EDGE-TO-EDGE) */}
         {viewMode === 'split' && (
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch w-full">
+          <div className="flex-1 w-full h-full min-h-screen flex flex-col p-2 sm:p-4 gap-3 bg-[#f1f5f9]">
             
-            {/* LEFT 5 COLUMNS: THE TABLET KIOSK (CLEAN BORDERLESS VIEW) */}
-            <div className="md:col-span-5 flex flex-col justify-center items-center">
-              
-              {/* Device Header label */}
-              <div className="text-center font-mono text-[11px] text-sky-400/80 mb-2.5 flex items-center gap-2 tracking-wide font-medium">
-                <Tablet className="h-4 w-4 text-sky-400" />
-                WACHTKAMER TABLET (PATIËNTEN INTERFACE)
+            {/* Minimal dual-view top bar with quick switch */}
+            <div className="flex justify-between items-center px-2 py-1 text-xs text-slate-600">
+              <div className="flex items-center gap-2 font-medium">
+                <span className="h-2 w-2 rounded-full bg-[#0071E3] animate-pulse"></span>
+                <span>Dual-View Simulatie &bull; Wachtkamer Kiosk + Secretariaat Live Sync</span>
               </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleRequestViewChange('kiosk')}
+                  className="px-2.5 py-1 rounded-full bg-white hover:bg-slate-50 border border-black/10 text-slate-700 font-semibold flex items-center gap-1 shadow-2xs cursor-pointer text-[11px]"
+                >
+                  <Tablet className="h-3 w-3 text-[#0071E3]" />
+                  <span>Alleen Kiosk</span>
+                </button>
+                <button
+                  onClick={() => handleRequestViewChange('admin')}
+                  className="px-2.5 py-1 rounded-full bg-white hover:bg-slate-50 border border-black/10 text-slate-700 font-semibold flex items-center gap-1 shadow-2xs cursor-pointer text-[11px]"
+                >
+                  <Monitor className="h-3 w-3 text-[#0071E3]" />
+                  <span>Alleen Admin</span>
+                </button>
+              </div>
+            </div>
 
-              {/* Patient terminal component wrapper without dark tablet bezel */}
-              <div className="w-full bg-[#f6f8fb] rounded-2xl overflow-hidden shadow-xl border border-slate-200">
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch w-full">
+              {/* LEFT 5 COLUMNS: THE TABLET KIOSK (CLEAN BORDERLESS VIEW) */}
+              <div className="lg:col-span-5 flex flex-col bg-white rounded-xl shadow-xs overflow-hidden">
                 <KioskApp 
                   doctors={doctors}
                   onPatientRegister={handlePatientRegister}
@@ -911,25 +813,13 @@ export default function App() {
                   onRequestStaffUnlock={handleKioskStaffUnlock}
                   onToggleFullscreen={handleToggleFullscreen}
                   isFullscreen={isFullscreen}
+                  onOpenAdmin={() => handleRequestViewChange('admin')}
+                  onOpenSplit={() => handleRequestViewChange('split')}
                 />
               </div>
 
-              <div className="mt-4 text-center max-w-sm">
-                <p className="text-white/40 text-xs">
-                  💡 <strong>Live Synchronisatie:</strong> Registreer links een patiënt en zie deze direct rechts realtime verschijnen in het secretariaatsportaal.
-                </p>
-              </div>
-            </div>
-
-            {/* RIGHT 7 COLUMNS: ENTIRE WEB-BASED ADMINISTRATION PANEL */}
-            <div className="md:col-span-7 flex flex-col justify-stretch overflow-hidden">
-              {/* Web Browser indicator */}
-              <div className="text-center md:text-left font-mono text-[11px] text-sky-400/80 mb-2.5 flex items-center justify-center md:justify-start gap-2 tracking-wide font-medium">
-                <Monitor className="h-4 w-4" />
-                SECRETARIAAT BROWSER (ARTSEN & BALIE)
-              </div>
-
-              <div className="flex-1 apple-glass rounded-3xl shadow-2xl overflow-hidden border border-white/20">
+              {/* RIGHT 7 COLUMNS: SECRETARIAAT ADMIN (CLEAN BORDERLESS VIEW) */}
+              <div className="lg:col-span-7 flex flex-col bg-white rounded-xl shadow-xs overflow-hidden">
                 <AdminDashboard 
                   patients={patients}
                   doctors={doctors}
@@ -949,16 +839,16 @@ export default function App() {
                   onLockAdmin={handleLockAdmin}
                   onRunGdprAnonymize={() => executeGdprAnonymization(systemConfig.gdprRetentionHours || 24)}
                   onTeamsNotify={handleTeamsNotify}
+                  onSwitchView={(v) => handleRequestViewChange(v)}
                 />
               </div>
             </div>
-
           </div>
         )}
 
         {/* VIEW 2: FULLSCREEN TABLET TERMINAL (EDGE-TO-EDGE) */}
         {viewMode === 'kiosk' && (
-          <div className="w-full flex-1 flex flex-col items-stretch h-full">
+          <div className="w-full flex-1 flex flex-col items-stretch h-full min-h-screen">
             <KioskApp 
               doctors={doctors}
               onPatientRegister={handlePatientRegister}
@@ -967,58 +857,40 @@ export default function App() {
               onRequestStaffUnlock={handleKioskStaffUnlock}
               onToggleFullscreen={handleToggleFullscreen}
               isFullscreen={isFullscreen}
+              onOpenAdmin={() => handleRequestViewChange('admin')}
+              onOpenSplit={() => handleRequestViewChange('split')}
             />
           </div>
         )}
 
-        {/* VIEW 3: FULLSCREEN WEB RECEPTION SYSTEM */}
+        {/* VIEW 3: FULLSCREEN WEB RECEPTION SYSTEM (EDGE-TO-EDGE) */}
         {viewMode === 'admin' && (
-          <div className="w-full max-w-6xl mx-auto py-2">
-            <div className="apple-glass rounded-3xl shadow-2xl overflow-hidden border border-white/20">
-              <AdminDashboard 
-                patients={patients}
-                doctors={doctors}
-                activeStaffList={staff}
-                timesheets={timesheets}
-                systemConfig={systemConfig}
-                notifications={notifications}
-                onUpdateConfig={handleUpdateConfig}
-                onUpdateDoctors={handleUpdateDoctors}
-                onUpdateStaff={handleUpdateStaff}
-                onUpdatePatientStatus={handleUpdatePatientStatus}
-                onResetDagdeel={handleResetDagdeel}
-                onClearNotificationLog={handleClearNotifications}
-                onAddSimulatedPatient={handleAddRandomSimulatedPatient}
-                onUpdateTimesheet={handleUpdateTimesheet}
-                onDeleteTimesheet={handleDeleteTimesheet}
-                onLockAdmin={handleLockAdmin}
-                onRunGdprAnonymize={() => executeGdprAnonymization(systemConfig.gdprRetentionHours || 24)}
-                onTeamsNotify={handleTeamsNotify}
-              />
-            </div>
+          <div className="w-full flex-1 flex flex-col items-stretch h-full min-h-screen">
+            <AdminDashboard 
+              patients={patients}
+              doctors={doctors}
+              activeStaffList={staff}
+              timesheets={timesheets}
+              systemConfig={systemConfig}
+              notifications={notifications}
+              onUpdateConfig={handleUpdateConfig}
+              onUpdateDoctors={handleUpdateDoctors}
+              onUpdateStaff={handleUpdateStaff}
+              onUpdatePatientStatus={handleUpdatePatientStatus}
+              onResetDagdeel={handleResetDagdeel}
+              onClearNotificationLog={handleClearNotifications}
+              onAddSimulatedPatient={handleAddRandomSimulatedPatient}
+              onUpdateTimesheet={handleUpdateTimesheet}
+              onDeleteTimesheet={handleDeleteTimesheet}
+              onLockAdmin={handleLockAdmin}
+              onRunGdprAnonymize={() => executeGdprAnonymization(systemConfig.gdprRetentionHours || 24)}
+              onTeamsNotify={handleTeamsNotify}
+              onSwitchView={(v) => handleRequestViewChange(v)}
+            />
           </div>
         )}
 
       </main>
-
-      {/* FOOTER INFORMATIONAL CREDITS (Only visible in admin or split mode) */}
-      {viewMode !== 'kiosk' && (
-        <footer className="relative z-10 apple-glass-dark border-t border-white/10 py-3.5 px-6 text-center text-[11px] text-white/40 shrink-0">
-          <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-2">
-            <span>&copy; 2026 Huidcentrum Gent &bull; Apple Glass Medical Edition</span>
-            <div className="flex gap-4">
-              <span className="flex items-center gap-1.5 text-emerald-400/90 font-medium">
-                <ClipboardList className="h-3.5 w-3.5" />
-                100% AVG / GDPR Conform
-              </span>
-              <span className="flex items-center gap-1.5 text-sky-400/90 font-medium">
-                <ShieldAlert className="h-3.5 w-3.5" />
-                Versleutelde Database
-              </span>
-            </div>
-          </div>
-        </footer>
-      )}
 
       {/* PIN LOCK SECURITY MODAL */}
       <PinLockModal

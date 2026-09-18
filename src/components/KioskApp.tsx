@@ -22,7 +22,9 @@ import {
   Lock,
   Keyboard,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Settings,
+  Monitor
 } from 'lucide-react';
 import { VirtualKeyboard } from './VirtualKeyboard';
 
@@ -34,6 +36,8 @@ interface KioskAppProps {
   isKioskLocked?: boolean;
   onRequestStaffUnlock?: () => void;
   onToggleFullscreen?: () => void;
+  onOpenAdmin?: () => void;
+  onOpenSplit?: () => void;
 }
 
 // In-app gentle synthesizer sound for touch feedback (Acoustic feedback removed as requested)
@@ -48,7 +52,9 @@ export default function KioskApp({
   isFullscreen = false,
   isKioskLocked = false,
   onRequestStaffUnlock,
-  onToggleFullscreen
+  onToggleFullscreen,
+  onOpenAdmin,
+  onOpenSplit
 }: KioskAppProps) {
   const [lang, setLang] = useState<LanguageCode>('NL');
   const [currentScreen, setCurrentScreen] = useState<'home' | 'f1_patient_type' | 'f1_details' | 'f1_appointment' | 'f1_success' | 'f2_choice' | 'f2_patient_form' | 'f2_success' | 'help_form' | 'help_success'>('home');
@@ -773,9 +779,14 @@ export default function KioskApp({
       <div className="flex justify-between items-center border-b border-black/5 pb-3 mb-2">
         <div className="flex items-center gap-2.5">
           <div className="h-2.5 w-2.5 rounded-full bg-[#0071E3] shadow-sm shadow-blue-500/50 animate-pulse"></div>
-          <span className="font-sans font-bold tracking-tight text-slate-800 text-sm sm:text-base flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onOpenAdmin || onRequestStaffUnlock}
+            className="font-sans font-bold tracking-tight text-slate-800 text-sm sm:text-base flex items-center gap-1.5 hover:text-[#0071E3] transition text-left cursor-pointer"
+            title="Klik voor balie-/secretariaatsbeheer"
+          >
             Huidcentrum Gent
-          </span>
+          </button>
           {isKioskLocked && (
             <button
               onClick={onRequestStaffUnlock}
@@ -787,20 +798,11 @@ export default function KioskApp({
             </button>
           )}
         </div>
-        <div className="flex items-center gap-3 text-xs font-mono text-slate-500">
+        <div className="flex items-center gap-2 text-xs font-mono text-slate-500">
           <span className="flex items-center gap-1 bg-white/70 px-2.5 py-1 rounded-full border border-black/5 shadow-2xs backdrop-blur-xs">
             <Clock className="h-3.5 w-3.5 text-[#0071E3]" />
             {currentTimeStr || "00:00:00"}
           </span>
-          {onToggleFullscreen && (
-            <button
-              onClick={onToggleFullscreen}
-              className="p-1.5 rounded-full text-slate-500 hover:text-slate-900 bg-white/60 hover:bg-white border border-black/5 shadow-2xs transition cursor-pointer"
-              title={isFullscreen ? "Verlaat volledig scherm" : "Kiosk Volledig Scherm"}
-            >
-              {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-            </button>
-          )}
         </div>
       </div>
 

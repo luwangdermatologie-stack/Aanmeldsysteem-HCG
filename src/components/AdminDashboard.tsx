@@ -33,7 +33,9 @@ import {
   ShieldAlert,
   Eye,
   EyeOff,
-  RefreshCw
+  RefreshCw,
+  Tablet,
+  LayoutGrid
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -55,6 +57,7 @@ interface AdminDashboardProps {
   onLockAdmin?: () => void;
   onRunGdprAnonymize?: () => Promise<{ processed: number; anonymized: number }>;
   onTeamsNotify?: (messageText: string, target?: string, payload?: any) => Promise<boolean>;
+  onSwitchView?: (view: 'kiosk' | 'split' | 'admin') => void;
 }
 
 export default function AdminDashboard({
@@ -75,7 +78,8 @@ export default function AdminDashboard({
   onDeleteTimesheet,
   onLockAdmin,
   onRunGdprAnonymize,
-  onTeamsNotify
+  onTeamsNotify,
+  onSwitchView
 }: AdminDashboardProps) {
   // Tabs and filters inside Admin
   const [activeTab, setActiveTab] = useState<'overview' | 'config' | 'timesheets' | 'leave'>('overview');
@@ -577,7 +581,7 @@ export default function AdminDashboard({
   };
 
   return (
-    <div className="flex flex-col h-full bg-bg-medical min-h-[490px] rounded-2xl overflow-hidden shadow-md text-text-main relative">
+    <div className="flex flex-col h-full w-full bg-bg-medical min-h-screen text-text-main relative">
       
       {/* CUSTOM FLOATING TOAST NOTIFICATION */}
       {toast && (
@@ -714,6 +718,28 @@ export default function AdminDashboard({
 
         {/* Action controls inside header */}
         <div className="flex gap-2 text-xs flex-wrap items-center">
+          {onSwitchView && (
+            <div className="flex items-center gap-1 bg-white/80 p-0.5 rounded-full border border-black/5 shadow-2xs backdrop-blur-xs">
+              <button
+                type="button"
+                onClick={() => onSwitchView('kiosk')}
+                className="px-2.5 py-1 rounded-full text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer font-semibold flex items-center gap-1 text-[11px]"
+                title="Naar Kiosk (Patiënten Tablet)"
+              >
+                <Tablet className="h-3 w-3 text-[#0071E3]" />
+                <span>Kiosk</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSwitchView('split')}
+                className="px-2.5 py-1 rounded-full text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer font-semibold flex items-center gap-1 text-[11px]"
+                title="Naar Dual-View"
+              >
+                <LayoutGrid className="h-3 w-3 text-indigo-500" />
+                <span>Dual-View</span>
+              </button>
+            </div>
+          )}
           <div className="bg-white/80 px-3.5 py-1.5 rounded-full border border-black/5 flex items-center gap-1.5 text-slate-600 shadow-2xs backdrop-blur-xs">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
             Ondersteuning: <strong className="text-slate-900">{activeStaffName}</strong>
