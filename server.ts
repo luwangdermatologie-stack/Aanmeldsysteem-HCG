@@ -6,7 +6,7 @@ import { createServer as createViteServer } from "vite";
 async function startServer() {
   const app = express();
   const server = http.createServer(app);
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Support JSON payloads
   app.use(express.json());
