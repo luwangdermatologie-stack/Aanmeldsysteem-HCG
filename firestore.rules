@@ -1,58 +1,47 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Catch-all safety filter: deny any unexpected collection
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Helper functions for schema validation
-    function isValidString(val, maxLen) {
-      return val is string && val.size() > 0 && val.size() <= maxLen;
-    }
-
-    // Patients collection - used by Reception Kiosk (registration) and Staff Dashboard
+    // Patients checkin data
     match /patients/{patientId} {
-      allow read: if true;
-      allow create, update, delete: if true;
+      allow read, write: if true;
     }
 
-    // Doctors collection - clinic medical team roster & room assignments
+    // Doctors & Rooms configuration
     match /doctors/{doctorId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
     }
 
-    // Staff collection - clinic support team & status
+    // Staff presence configuration
     match /staff/{staffId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
     }
 
-    // Config collection - operational settings (dagdeel, active staff, webhook)
+    // System Settings & Webhook Config
     match /config/{configId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
     }
 
-    // MS Teams Notifications audit trail
+    // Teams Notifications log
     match /notifications/{notificationId} {
-      allow read: if true;
-      allow create, update, delete: if true;
+      allow read, write: if true;
     }
 
-    // Staff timesheets - clock-in / clock-out tracking
+    // Staff Clock-in / Clock-out Timesheets
     match /timesheets/{timesheetId} {
-      allow read: if true;
-      allow create, update, delete: if true;
+      allow read, write: if true;
+    }
+
+    // Archived Patients
+    match /archived_patients/{archiveId} {
+      allow read, write: if true;
     }
 
     // Leave Planning - Staff Members
     match /leave_staff/{staffId} {
       allow read, write: if true;
     }
-<<<<<<< HEAD
 
     // Leave Planning - Leave Requests
     match /leave_requests/{requestId} {
@@ -73,7 +62,5 @@ service cloud.firestore {
     match /leave_config/{configId} {
       allow read, write: if true;
     }
-=======
->>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
   }
 }

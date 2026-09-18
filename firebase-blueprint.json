@@ -2,30 +2,35 @@
   "entities": {
     "patient": {
       "title": "Patient",
-      "description": "Patient check-in data",
+      "description": "A checked-in patient",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "firstName": { "type": "string" },
         "lastName": { "type": "string" },
         "birthDate": { "type": "string" },
-        "nationalRegistryNum": { "type": "string" },
+        "nationalRegNum": { "type": "string" },
         "idCardNum": { "type": "string" },
         "appointmentTime": { "type": "string" },
+        "arrivalTime": { "type": "string" },
         "doctorId": { "type": "string" },
         "doctorName": { "type": "string" },
-        "hasAppointment": { "type": "boolean" },
-        "flowType": { "type": "string" },
-        "arrivalTime": { "type": "string" },
-        "arrivalDate": { "type": "string" },
         "waitingRoom": { "type": "string" },
-        "status": { "type": "string" }
+        "isLate": { "type": "boolean" },
+        "hasAppointment": { "type": "boolean" },
+        "isNoShow": { "type": "boolean" },
+        "noShowReason": { "type": "string", "nullable": true },
+        "completed": { "type": "boolean" },
+        "helpRequested": { "type": "boolean", "nullable": true },
+        "helpDescription": { "type": "string", "nullable": true },
+        "notes": { "type": "string", "nullable": true },
+        "date": { "type": "string" }
       },
-      "required": ["id", "firstName", "lastName", "birthDate", "nationalRegistryNum", "hasAppointment", "flowType", "arrivalTime", "arrivalDate", "waitingRoom", "status"]
+      "required": ["id", "firstName", "lastName", "arrivalTime", "hasAppointment", "completed", "date"]
     },
     "doctor": {
       "title": "Doctor",
-      "description": "Dermatologist profile and room",
+      "description": "Practicing doctor or nurse profile",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -39,34 +44,40 @@
     },
     "activeStaff": {
       "title": "ActiveStaff",
-      "description": "Desk staff member profile",
+      "description": "Front desk staff member",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
-        "role": { "type": "string" }
+        "role": { "type": "string" },
+        "isPresent": { "type": "boolean" },
+        "lastActive": { "type": "string" }
       },
-      "required": ["id", "name", "role"]
+      "required": ["id", "name", "role", "isPresent", "lastActive"]
     },
     "systemConfig": {
       "title": "SystemConfig",
-      "description": "System operational configuration",
+      "description": "App settings and integrations",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "currentDagdeel": { "type": "string" },
-        "activeStaffId": { "type": "string" },
-        "teamsWebhookUrl": { "type": "string" }
+        "teamsWebhookUrl": { "type": "string" },
+        "notifyOnCheckin": { "type": "boolean" },
+        "notifyOnLate": { "type": "boolean" },
+        "notifyOnNoAppointment": { "type": "boolean" },
+        "notifyOnHelp": { "type": "boolean" },
+        "kioskAutoResetSeconds": { "type": "number" },
+        "adminPin": { "type": "string" }
       },
-      "required": ["id", "currentDagdeel", "activeStaffId", "teamsWebhookUrl"]
+      "required": ["adminPin"]
     },
     "teamsNotification": {
       "title": "TeamsNotification",
-      "description": "Notification sent to MS Teams channel",
+      "description": "Logged notification message",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "timestamp": { "type": "string" },
+        "type": { "type": "string" },
         "targetDoctor": { "type": "string" },
         "targetStaff": { "type": "string" },
         "payload": { "type": "object" },
@@ -74,7 +85,6 @@
         "messagePreview": { "type": "string" }
       },
       "required": ["id", "timestamp", "status", "messagePreview"]
-<<<<<<< HEAD
     },
     "timesheet": {
       "title": "Timesheet",
@@ -89,8 +99,6 @@
         "date": { "type": "string" }
       },
       "required": ["id", "staffId", "staffName", "clockIn", "date"]
-=======
->>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     }
   },
   "firestore": {
@@ -113,13 +121,10 @@
     "notifications": {
       "schema": "teamsNotification",
       "description": "Audit trail of Teams notifications sent"
-<<<<<<< HEAD
     },
     "timesheets": {
       "schema": "timesheet",
       "description": "Staff clock-in/out records"
-=======
->>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     }
   }
 }
