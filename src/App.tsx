@@ -112,7 +112,7 @@ export default function App() {
     } catch (e) {
       console.warn("localStorage not accessible", e);
     }
-    return 'split';
+    return 'kiosk';
   });
 
   const [isLocked] = useState(() => {
@@ -769,81 +769,96 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d1117] text-slate-100 font-sans flex flex-col justify-between selection:bg-[#0071E3] selection:text-white relative overflow-x-hidden" id="applet-root">
+    <div className={`min-h-screen font-sans flex flex-col justify-between selection:bg-[#0071E3] selection:text-white relative ${
+      viewMode === 'kiosk' 
+        ? 'bg-[#f1f5f9] text-slate-800' 
+        : 'bg-[#0d1117] text-slate-100 overflow-x-hidden'
+    }`} id="applet-root">
       
-      {/* Dynamic Apple Ambient Glow Orbs in Background */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/15 rounded-full blur-[120px]"></div>
-        <div className="absolute top-1/3 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-[140px]"></div>
-        <div className="absolute -bottom-40 left-1/3 w-96 h-96 bg-sky-500/10 rounded-full blur-[130px]"></div>
-      </div>
+      {/* Dynamic Apple Ambient Glow Orbs in Background (only for split and admin views) */}
+      {viewMode !== 'kiosk' && (
+        <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+          <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/15 rounded-full blur-[120px]"></div>
+          <div className="absolute top-1/3 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-[140px]"></div>
+          <div className="absolute -bottom-40 left-1/3 w-96 h-96 bg-sky-500/10 rounded-full blur-[130px]"></div>
+        </div>
+      )}
 
-      {/* GLOBAL SIMULATION BAR - APPLE GLASS TOP HEADER */}
+      {/* GLOBAL SIMULATION BAR - APPLE GLASS TOP HEADER (Hidden on clean kiosk unless unlocked/requested) */}
       {!isLocked && (
-        <header className="relative z-10 apple-glass-dark border-b border-white/10 px-6 py-3.5 flex flex-col md:flex-row justify-between items-center gap-3.5 sticky top-0 shadow-2xl">
-          <div className="flex items-center gap-3.5">
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-[#0071E3] to-[#42A5F5] p-0.5 shadow-lg shadow-blue-500/20 flex items-center justify-center shrink-0 border border-white/30">
-              <div className="h-full w-full bg-[#0d1117]/40 rounded-[14px] flex items-center justify-center backdrop-blur-xs">
+        <header className={`relative z-20 border-b px-4 sm:px-6 py-2.5 flex flex-col md:flex-row justify-between items-center gap-2.5 sticky top-0 ${
+          viewMode === 'kiosk'
+            ? 'bg-white/80 backdrop-blur-md border-slate-200 shadow-sm text-slate-800'
+            : 'apple-glass-dark border-white/10 shadow-2xl text-white'
+        }`}>
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-[#0071E3] to-[#42A5F5] p-0.5 shadow-sm flex items-center justify-center shrink-0">
+              <div className="h-full w-full bg-white/20 rounded-[10px] flex items-center justify-center">
                 <HeartPulse className="h-5 w-5 text-white" />
               </div>
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] tracking-wider uppercase font-semibold text-sky-400 bg-sky-500/15 border border-sky-400/20 px-2 py-0.5 rounded-full">
-                  Clinical Suite
+                <span className="text-[10px] tracking-wider uppercase font-semibold text-[#0071E3] bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                  Kiosk & Secretariaat
                 </span>
-                <span className="text-xs text-white/40 font-mono">v2.4</span>
               </div>
-              <h1 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                Huidcentrum Gent <span className="text-white/40 font-normal text-xs sm:text-sm">| Digitaal Ontvangstsysteem</span>
+              <h1 className={`text-sm sm:text-base font-bold tracking-tight flex items-center gap-2 ${
+                viewMode === 'kiosk' ? 'text-slate-900' : 'text-white'
+              }`}>
+                Huidcentrum Gent <span className={`${viewMode === 'kiosk' ? 'text-slate-400' : 'text-white/40'} font-normal text-xs`}>| Aanmeldsysteem</span>
               </h1>
             </div>
           </div>
 
-          {/* View Mode toggles - Apple Segmented Control Style */}
-          <div className="bg-black/40 border border-white/10 p-1 rounded-2xl flex items-center gap-1 backdrop-blur-xl shadow-inner">
-            <button
-              id="view-toggle-split"
-              onClick={() => handleRequestViewChange('split')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer ${
-                viewMode === 'split' 
-                  ? 'bg-white/15 text-white shadow-sm border border-white/20 backdrop-blur-md' 
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              Dual-View Simulator
-            </button>
-            
+          {/* View Mode toggles */}
+          <div className={`p-1 rounded-xl flex items-center gap-1 shadow-xs border ${
+            viewMode === 'kiosk' 
+              ? 'bg-slate-100/90 border-slate-200 text-slate-600' 
+              : 'bg-black/40 border-white/10 text-white backdrop-blur-xl'
+          }`}>
             <button
               id="view-toggle-kiosk"
               onClick={() => handleRequestViewChange('kiosk')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
                 viewMode === 'kiosk' 
-                  ? 'bg-[#0071E3] text-white shadow-md shadow-blue-500/30 border border-blue-400/30' 
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
+                  ? 'bg-[#0071E3] text-white shadow-sm' 
+                  : 'hover:text-slate-900 hover:bg-white/40'
               }`}
             >
               <Tablet className="h-3.5 w-3.5" />
-              <span>Alleen Kiosk</span>
+              <span>Kiosk (Volledig Scherm)</span>
               {systemConfig.kioskLocked && (
                 <Lock className="h-3 w-3 text-amber-300 ml-0.5" />
               )}
             </button>
 
             <button
+              id="view-toggle-split"
+              onClick={() => handleRequestViewChange('split')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                viewMode === 'split' 
+                  ? 'bg-[#0071E3] text-white shadow-sm' 
+                  : 'hover:text-slate-900 hover:bg-white/40'
+              }`}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              Dual-View
+            </button>
+            
+            <button
               id="view-toggle-admin"
               onClick={() => handleRequestViewChange('admin')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
                 viewMode === 'admin' 
-                  ? 'bg-[#0071E3] text-white shadow-md shadow-blue-500/30 border border-blue-400/30' 
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
+                  ? 'bg-[#0071E3] text-white shadow-sm' 
+                  : 'hover:text-slate-900 hover:bg-white/40'
               }`}
             >
               <Monitor className="h-3.5 w-3.5" />
               <span>Secretariaat Admin</span>
               {systemConfig.kioskLocked && (
-                <span className="text-[10px] px-1 py-0.2 rounded bg-amber-400/20 text-amber-300 font-mono">PIN</span>
+                <span className="text-[10px] px-1 py-0.2 rounded bg-amber-400/20 text-amber-600 font-mono">PIN</span>
               )}
             </button>
           </div>
@@ -853,7 +868,11 @@ export default function App() {
             <button
               onClick={handleResetEntireData}
               title="Reset alle gegevens naar standaard"
-              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white/70 hover:text-red-400 rounded-xl transition duration-200 cursor-pointer text-xs flex items-center gap-1.5 backdrop-blur-md"
+              className={`px-3 py-1.5 border rounded-lg transition duration-200 cursor-pointer text-xs flex items-center gap-1.5 ${
+                viewMode === 'kiosk'
+                  ? 'bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 border-slate-200'
+                  : 'bg-white/5 hover:bg-white/10 border-white/10 text-white/70 hover:text-red-400'
+              }`}
             >
               <RotateCcw className="h-3.5 w-3.5" />
               Reset Data
@@ -863,13 +882,17 @@ export default function App() {
       )}
 
       {/* CORE WORKSPACE CONTENT PANEL */}
-      <main className="relative z-10 flex-1 p-4 md:p-6 max-w-[1550px] mx-auto w-full flex flex-col justify-center">
+      <main className={`relative z-10 flex-1 w-full flex flex-col justify-center ${
+        viewMode === 'kiosk' 
+          ? 'p-0 m-0 max-w-none h-full' 
+          : 'p-4 md:p-6 max-w-[1550px] mx-auto'
+      }`}>
         
         {/* VIEW 1: DUAL-VIEW SPLIT LIVE SYNC SIMULATION */}
         {viewMode === 'split' && (
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch w-full">
             
-            {/* LEFT 5 COLUMNS: THE TABLET KIOSK WRAPPED IN SLEEK APPLE IPAD BEZEL */}
+            {/* LEFT 5 COLUMNS: THE TABLET KIOSK (CLEAN BORDERLESS VIEW) */}
             <div className="md:col-span-5 flex flex-col justify-center items-center">
               
               {/* Device Header label */}
@@ -878,32 +901,17 @@ export default function App() {
                 WACHTKAMER TABLET (PATIËNTEN INTERFACE)
               </div>
 
-              {/* Landscape IPad hardware framing shell with sleek Apple aluminum & dark glass bezel */}
-              <div className="relative w-full max-w-[620px] bg-gradient-to-b from-[#1c222d] to-[#0e1218] p-4 sm:p-5 rounded-[36px] border border-white/15 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.7)] flex flex-col justify-center ring-1 ring-black/80">
-                
-                {/* Sleek metallic outer rim highlight */}
-                <div className="absolute inset-0 rounded-[36px] pointer-events-none border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)]"></div>
-
-                {/* Front camera lens cutout with sensor glare */}
-                <div className="absolute left-1/2 -translate-x-1/2 top-2.5 h-2 w-2 rounded-full bg-black border border-white/20 flex items-center justify-center">
-                  <span className="h-0.5 w-0.5 rounded-full bg-blue-500/60"></span>
-                </div>
-
-                {/* Patient terminal component wrapper */}
-                <div className="w-full bg-[#f6f8fb] rounded-2xl overflow-hidden shadow-2xl border border-white/60">
-                  <KioskApp 
-                    doctors={doctors}
-                    onPatientRegister={handlePatientRegister}
-                    onTeamsNotify={handleTeamsNotify}
-                    isKioskLocked={systemConfig.kioskLocked ?? false}
-                    onRequestStaffUnlock={handleKioskStaffUnlock}
-                    onToggleFullscreen={handleToggleFullscreen}
-                    isFullscreen={isFullscreen}
-                  />
-                </div>
-
-                {/* Device bottom software home indicator bar */}
-                <div className="mt-3.5 flex justify-center items-center h-1 bg-white/20 w-28 rounded-full mx-auto"></div>
+              {/* Patient terminal component wrapper without dark tablet bezel */}
+              <div className="w-full bg-[#f6f8fb] rounded-2xl overflow-hidden shadow-xl border border-slate-200">
+                <KioskApp 
+                  doctors={doctors}
+                  onPatientRegister={handlePatientRegister}
+                  onTeamsNotify={handleTeamsNotify}
+                  isKioskLocked={systemConfig.kioskLocked ?? false}
+                  onRequestStaffUnlock={handleKioskStaffUnlock}
+                  onToggleFullscreen={handleToggleFullscreen}
+                  isFullscreen={isFullscreen}
+                />
               </div>
 
               <div className="mt-4 text-center max-w-sm">
@@ -948,33 +956,18 @@ export default function App() {
           </div>
         )}
 
-        {/* VIEW 2: FULLSCREEN TABLET TERMINAL */}
+        {/* VIEW 2: FULLSCREEN TABLET TERMINAL (EDGE-TO-EDGE) */}
         {viewMode === 'kiosk' && (
-          <div className="max-w-[760px] mx-auto w-full py-4 flex flex-col items-center">
-            <div className="text-center font-mono text-xs text-sky-400/80 mb-3 flex items-center gap-1.5 tracking-wider">
-              <Tablet className="h-4 w-4 text-sky-400" />
-              TABLET WAITING ROOM KIOSK &bull; LANDSCAPE
-            </div>
-
-            <div className="w-full bg-gradient-to-b from-[#1c222d] to-[#0e1218] p-6 rounded-[40px] border border-white/15 shadow-[0_30px_70px_-10px_rgba(0,0,0,0.8)] relative">
-              <div className="absolute left-1/2 -translate-x-1/2 top-3 h-2 w-2 rounded-full bg-black border border-white/20"></div>
-              <div className="bg-[#f6f8fb] rounded-2xl overflow-hidden shadow-2xl border border-white/60">
-                <KioskApp 
-                  doctors={doctors}
-                  onPatientRegister={handlePatientRegister}
-                  onTeamsNotify={handleTeamsNotify}
-                  isKioskLocked={systemConfig.kioskLocked ?? false}
-                  onRequestStaffUnlock={handleKioskStaffUnlock}
-                  onToggleFullscreen={handleToggleFullscreen}
-                  isFullscreen={isFullscreen}
-                />
-              </div>
-              <div className="mt-4 flex justify-center items-center h-1 bg-white/20 w-32 rounded-full mx-auto"></div>
-            </div>
-            
-            <p className="text-xs text-white/40 mt-4 text-center max-w-md">
-              Dit is het ware scherm dat patiënten in de wachtkamer zien op de tablet. Wissel rechtsonder van taal om direct te testen in NL, EN, FR, TR of AR.
-            </p>
+          <div className="w-full flex-1 flex flex-col items-stretch h-full">
+            <KioskApp 
+              doctors={doctors}
+              onPatientRegister={handlePatientRegister}
+              onTeamsNotify={handleTeamsNotify}
+              isKioskLocked={systemConfig.kioskLocked ?? false}
+              onRequestStaffUnlock={handleKioskStaffUnlock}
+              onToggleFullscreen={handleToggleFullscreen}
+              isFullscreen={isFullscreen}
+            />
           </div>
         )}
 
@@ -1008,22 +1001,24 @@ export default function App() {
 
       </main>
 
-      {/* FOOTER INFORMATIONAL CREDITS */}
-      <footer className="relative z-10 apple-glass-dark border-t border-white/10 py-3.5 px-6 text-center text-[11px] text-white/40 shrink-0">
-        <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-2">
-          <span>&copy; 2026 Huidcentrum Gent &bull; Apple Glass Medical Edition</span>
-          <div className="flex gap-4">
-            <span className="flex items-center gap-1.5 text-emerald-400/90 font-medium">
-              <ClipboardList className="h-3.5 w-3.5" />
-              100% AVG / GDPR Conform
-            </span>
-            <span className="flex items-center gap-1.5 text-sky-400/90 font-medium">
-              <ShieldAlert className="h-3.5 w-3.5" />
-              Versleutelde Database
-            </span>
+      {/* FOOTER INFORMATIONAL CREDITS (Only visible in admin or split mode) */}
+      {viewMode !== 'kiosk' && (
+        <footer className="relative z-10 apple-glass-dark border-t border-white/10 py-3.5 px-6 text-center text-[11px] text-white/40 shrink-0">
+          <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-2">
+            <span>&copy; 2026 Huidcentrum Gent &bull; Apple Glass Medical Edition</span>
+            <div className="flex gap-4">
+              <span className="flex items-center gap-1.5 text-emerald-400/90 font-medium">
+                <ClipboardList className="h-3.5 w-3.5" />
+                100% AVG / GDPR Conform
+              </span>
+              <span className="flex items-center gap-1.5 text-sky-400/90 font-medium">
+                <ShieldAlert className="h-3.5 w-3.5" />
+                Versleutelde Database
+              </span>
+            </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      )}
 
       {/* PIN LOCK SECURITY MODAL */}
       <PinLockModal

@@ -764,11 +764,9 @@ export default function KioskApp({
 
   return (
     <div 
-      className={`relative flex flex-col justify-between bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] text-slate-800 shadow-2xl select-none backdrop-blur-md transition-all duration-300 ${
-        isFullscreen 
-          ? 'w-full max-w-4xl mx-auto min-h-[580px] p-6 sm:p-8 rounded-[32px] shadow-2xl border border-white/80 overflow-y-auto' 
-          : 'w-full min-h-[500px] rounded-2xl p-5 overflow-y-auto'
-      } ${showVirtualKeyboard ? 'pb-72 sm:pb-80 md:pb-96' : ''}`}
+      className={`relative flex flex-col justify-between bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] text-slate-800 select-none transition-all duration-300 w-full min-h-screen p-4 sm:p-6 md:p-8 overflow-y-auto ${
+        showVirtualKeyboard ? 'pb-72 sm:pb-80 md:pb-96' : ''
+      }`}
       dir={isCurrentRtl ? 'rtl' : 'ltr'}
     >
       {/* High-End Clinic Brand Header Decorator - Apple Glass Bar */}
