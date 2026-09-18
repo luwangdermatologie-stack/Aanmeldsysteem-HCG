@@ -36,10 +36,13 @@ service cloud.firestore {
     match /notifications/{notificationId} {
       allow read, write: if true;
     }
+<<<<<<< HEAD
 
     // Staff timesheets
     match /timesheets/{timesheetId} {
       allow read, write: if true;
     }
+=======
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
   }
 }

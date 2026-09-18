@@ -74,6 +74,7 @@
         "messagePreview": { "type": "string" }
       },
       "required": ["id", "timestamp", "status", "messagePreview"]
+<<<<<<< HEAD
     },
     "timesheet": {
       "title": "Timesheet",
@@ -88,6 +89,8 @@
         "date": { "type": "string" }
       },
       "required": ["id", "staffId", "staffName", "clockIn", "date"]
+=======
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     }
   },
   "firestore": {
@@ -110,10 +113,13 @@
     "notifications": {
       "schema": "teamsNotification",
       "description": "Audit trail of Teams notifications sent"
+<<<<<<< HEAD
     },
     "timesheets": {
       "schema": "timesheet",
       "description": "Staff clock-in/out records"
+=======
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     }
   }
 }

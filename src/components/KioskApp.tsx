@@ -33,12 +33,19 @@ const playTone = (type: 'tap' | 'success' | 'warn') => {
 
 export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, isFullscreen = false }: KioskAppProps) {
   const [lang, setLang] = useState<LanguageCode>('NL');
+<<<<<<< HEAD
   const [currentScreen, setCurrentScreen] = useState<'home' | 'f1_details' | 'f1_appointment' | 'f1_success' | 'f2_choice' | 'f2_patient_form' | 'f2_success' | 'help_success'>('home');
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [currentTimeStr, setCurrentTimeStr] = useState('');
 
   const [helpCooldown, setHelpCooldown] = useState(false);
 
+=======
+  const [currentScreen, setCurrentScreen] = useState<'home' | 'f1_details' | 'f1_appointment' | 'f1_success' | 'f2_choice' | 'f2_patient_form' | 'f2_success'>('home');
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const [currentTimeStr, setCurrentTimeStr] = useState('');
+
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
   // Form Fields
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -72,8 +79,13 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
 
   // Handle countdown timers for success screens
   useEffect(() => {
+<<<<<<< HEAD
     if (currentScreen === 'f1_success' || currentScreen === 'f2_success' || currentScreen === 'help_success') {
       const targetSec = 30;
+=======
+    if (currentScreen === 'f1_success' || currentScreen === 'f2_success') {
+      const targetSec = currentScreen === 'f1_success' ? 10 : 15;
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
       setCountdown(targetSec);
       
       timerRef.current = setInterval(() => {
@@ -92,6 +104,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
     };
   }, [currentScreen]);
 
+<<<<<<< HEAD
   const handleHelpClick = () => {
     if (helpCooldown) return;
     playTone('tap');
@@ -114,6 +127,8 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
     }, 15000); // 15s cooldown independent of screen state
   };
 
+=======
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
   const handleResetToHome = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     setFirstName('');
@@ -127,7 +142,10 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
     setIsPatientLate(false);
     setCurrentScreen('home');
     setLangMenuOpen(false);
+<<<<<<< HEAD
     setLang('NL');
+=======
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
   };
 
   const handleLanguageSelect = (code: LanguageCode) => {
@@ -380,6 +398,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 </span>
               </button>
             </div>
+<<<<<<< HEAD
 
             <div className="mt-6 flex justify-center w-full">
               <button
@@ -392,6 +411,8 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 <span>{t.helpBtnText}</span>
               </button>
             </div>
+=======
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
           </div>
         )}
 
@@ -531,6 +552,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
               <form onSubmit={handleConfirmF1Appointment} className="space-y-4">
                 <div className="flex flex-col">
                   <label className="text-xs font-semibold text-text-main mb-1">{t.apptTimeLabel}</label>
+<<<<<<< HEAD
                   <div className="flex gap-2">
                     <select
                       id="input-kiosk-f1-time-hr"
@@ -565,6 +587,17 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                         return <option key={`min-${v}`} value={v}>{v}</option>;
                       })}
                     </select>
+=======
+                  <div className="relative">
+                    <input
+                      id="input-kiosk-f1-time"
+                      type="time"
+                      value={appointmentTime}
+                      onChange={(e) => setAppointmentTime(e.target.value)}
+                      className="p-2.5 w-full text-base rounded-lg border border-border-soft bg-white focus:outline-none focus:border-button-active focus:ring-1 focus:ring-button-active"
+                      required
+                    />
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
                   </div>
                 </div>
 
@@ -646,7 +679,11 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 onClick={handleResetToHome}
                 className="mt-2.5 underline hover:text-text-main cursor-pointer text-[11px] font-semibold"
               >
+<<<<<<< HEAD
                 {t.returnToStartBtn}
+=======
+                Ga direct terug naar start
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
               </button>
             </div>
           </div>
@@ -807,6 +844,7 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 onClick={handleResetToHome}
                 className="mt-2 text-xs underline hover:text-text-main cursor-pointer"
               >
+<<<<<<< HEAD
                 {t.returnToStartBtn}
               </button>
             </div>
@@ -835,6 +873,9 @@ export default function KioskApp({ doctors, onPatientRegister, onTeamsNotify, is
                 className="mt-2 text-xs underline hover:text-text-main cursor-pointer"
               >
                 {t.returnToStartBtn}
+=======
+                Terug naar startscherm
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
               </button>
             </div>
           </div>

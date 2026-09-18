@@ -22,7 +22,10 @@ export interface TranslationSet {
   idCardLabel: string;
   nextBtn: string;
   backBtn: string;
+<<<<<<< HEAD
   returnToStartBtn: string;
+=======
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
   requiredFieldsError: string;
   invalidFormatError: string;
 
@@ -57,9 +60,12 @@ export interface TranslationSet {
   noApptSuccessTitle: string;
   noApptSuccessMsg: string;
   nonPatientSuccessMsg: string;
+<<<<<<< HEAD
   
   // Help
   helpBtnText: string;
+=======
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
 }
 
 export const isRtl = (lang: LanguageCode): boolean => lang === 'AR';
@@ -80,7 +86,10 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     idCardLabel: "Identiteitskaartnummer (Optioneel)",
     nextBtn: "Volgende",
     backBtn: "Vorige",
+<<<<<<< HEAD
     returnToStartBtn: "Keer terug naar beginscherm",
+=======
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     requiredFieldsError: "Gelieve alle verplichte velden (*) in te vullen.",
     invalidFormatError: "Ongeldige indeling.",
     apptDetailsTitle: "Tijdstip & Dermatoloog",
@@ -93,7 +102,11 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     directionPrefix: "Gelieve plaats te nemen in de volgende wachtzaal:",
     waitingRoomGround: "Wachtzaal Gelijkvloers (Begane Grond)",
     waitingRoomFirst: "Wachtzaal Bovenverdieping (1ste Verdieping)",
+<<<<<<< HEAD
     lateWarningText: "U bent te laat, een personeelslid komt even met u bekijken of uw afspraak nog kan doorgaan. Eventjes geduld.",
+=======
+    lateWarningText: "Let op: U bent te laat. U zult moeten wachten tot de patiënten die wel op tijd zijn, gezien zijn.",
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     teamsNotificationSent: "Het artsenteam is op de hoogte gebracht van uw komst.",
     redirectTimerText: "Dit scherm herstart over {seconds} seconden...",
     noApptTitle: "Hoe kunnen we u helpen?",
@@ -104,8 +117,12 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     patientHelpSub: "Vul uw gegevens in zodat onze ondersteunende medewerkers u gericht kunnen aanspreken.",
     noApptSuccessTitle: "Bericht Verstuurd",
     noApptSuccessMsg: "Er is een bericht verstuurd. Neem even plaats, een medewerker komt u zo spoedig mogelijk helpen.",
+<<<<<<< HEAD
     nonPatientSuccessMsg: "U bent aangemeld. Een medewerker is op de hoogte gebracht en helpt u zo direct.",
     helpBtnText: "Hulp nodig? Vraag assistentie."
+=======
+    nonPatientSuccessMsg: "U bent aangemeld. Een medewerker is op de hoogte gebracht en helpt u zo direct."
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
   },
   EN: {
     welcomeTitle: "Welcome to Huidcentrum Gent",
@@ -122,7 +139,10 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     idCardLabel: "Identity Card Number (Optional)",
     nextBtn: "Next",
     backBtn: "Back",
+<<<<<<< HEAD
     returnToStartBtn: "Return to start screen",
+=======
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     requiredFieldsError: "Please fill in all required fields (*).",
     invalidFormatError: "Invalid format.",
     apptDetailsTitle: "Appointment Details",
@@ -135,7 +155,11 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     directionPrefix: "Please take a seat in the following waiting room:",
     waitingRoomGround: "Waiting Room Ground Floor (Gelijkvloers)",
     waitingRoomFirst: "Waiting Room Upper Floor (First Floor/Boven)",
+<<<<<<< HEAD
     lateWarningText: "You are late. A staff member will shortly check with you if your appointment can still proceed. Please be patient.",
+=======
+    lateWarningText: "Please note: You are late. You will have to wait until patients who arrived on time are seen.",
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     teamsNotificationSent: "The medical staff has been notified of your arrival.",
     redirectTimerText: "This screen restarts in {seconds} seconds...",
     noApptTitle: "How can we help you?",
@@ -146,8 +170,12 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     patientHelpSub: "Please fill in your details so our supporting staff can assist you directly.",
     noApptSuccessTitle: "Notification Dispatched",
     noApptSuccessMsg: "A message has been sent. Please take a seat, an assistant will come to help you as soon as possible.",
+<<<<<<< HEAD
     nonPatientSuccessMsg: "You have been registered. A staff member has been notified and will assist you shortly.",
     helpBtnText: "Need help? Ask for assistance."
+=======
+    nonPatientSuccessMsg: "You have been registered. A staff member has been notified and will assist you shortly."
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
   },
   FR: {
     welcomeTitle: "Bienvenue au Huidcentrum Gent",
@@ -164,7 +192,10 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     idCardLabel: "Numéro de carte d'identité (Optionnel)",
     nextBtn: "Suivant",
     backBtn: "Retour",
+<<<<<<< HEAD
     returnToStartBtn: "Retour à l'écran d'accueil",
+=======
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     requiredFieldsError: "Veuillez remplir tous les champs obligatoires (*).",
     invalidFormatError: "Format invalide.",
     apptDetailsTitle: "Détails du Rendez-vous",
@@ -177,7 +208,11 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     directionPrefix: "Veuillez vous installer dans la salle d'attente suivante :",
     waitingRoomGround: "Salle d'attente Rez-de-chaussée (Gelijkvloers)",
     waitingRoomFirst: "Salle d'attente Premier étage (Bovenverdieping)",
+<<<<<<< HEAD
     lateWarningText: "Vous êtes en retard. Un membre du personnel viendra voir avec vous si votre rendez-vous peut encore avoir lieu. Veuillez patienter.",
+=======
+    lateWarningText: "Attention : Vous êtes en retard. Vous devrez attendre que les patients arrivés à l'heure soient examinés.",
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     teamsNotificationSent: "L'équipe médicale a été informée de votre arrivée.",
     redirectTimerText: "Cet écran retournera à l'accueil dans {seconds} secondes...",
     noApptTitle: "Comment pouvons-nous vous aider ?",
@@ -188,8 +223,12 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     patientHelpSub: "Veuillez remplir vos coordonnées afin qu'un membre du personnel puisse vous assister.",
     noApptSuccessTitle: "Message Envoyé",
     noApptSuccessMsg: "Un message a été envoyé. Veuillez vous installer, un collaborateur viendra vous aider au plus vite.",
+<<<<<<< HEAD
     nonPatientSuccessMsg: "Vous êtes enregistré. Un collaborateur a été prévenu et sera là sous peu.",
     helpBtnText: "Besoin d'aide ? Demandez de l'aide."
+=======
+    nonPatientSuccessMsg: "Vous êtes enregistré. Un collaborateur a été prévenu et sera là sous peu."
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
   },
   TR: {
     welcomeTitle: "Huidcentrum Gent'e Hoş Geldiniz",
@@ -206,7 +245,10 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     idCardLabel: "Kimlik Kartı Numarası (İsteğe Bağlı)",
     nextBtn: "İleri",
     backBtn: "Geri",
+<<<<<<< HEAD
     returnToStartBtn: "Başlangıç ekranına dön",
+=======
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     requiredFieldsError: "Lütfen tüm zorunlu alanları (*) doldurun.",
     invalidFormatError: "Geçersiz biçim.",
     apptDetailsTitle: "Randevu Detayları",
@@ -219,7 +261,11 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     directionPrefix: "Lütfen aşağıdaki bekleme odasında yerinizi alın:",
     waitingRoomGround: "Giriş Kat Bekleme Salonu (Gelijkvloers)",
     waitingRoomFirst: "Üst Kat Bekleme Salonu (First Floor/Boven)",
+<<<<<<< HEAD
     lateWarningText: "Geç kaldınız. Bir personel randevunuzun devam edip edemeyeceğini görüşmek üzere birazdan yanınıza gelecektir. Lütfen bekleyin.",
+=======
+    lateWarningText: "Dikkat: Geç kaldınız. Zamanında gelen hastalar muayene edilene kadar beklemeniz gerekecektir.",
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     teamsNotificationSent: "Doktorunuza varışınızla ilgili bildirim gönderildi.",
     redirectTimerText: "Bu ekran {seconds} saniye içinde ana ekrana dönecektir...",
     noApptTitle: "Size nasıl yardımcı olabiliriz?",
@@ -230,8 +276,12 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     patientHelpSub: "Personelimizin size doğrudan ulaşabilmesi için bilgilerinizi girin.",
     noApptSuccessTitle: "Mesaj Gönderildi",
     noApptSuccessMsg: "Bir mesaj gönderildi. Lütfen yerinizi alın, bir çalışanımız en kısa sürede size yardımcı olacaktır.",
+<<<<<<< HEAD
     nonPatientSuccessMsg: "Kaydınız alındı. Personelimiz bilgilendirildi ve birazdan size yardımcı olacaktır.",
     helpBtnText: "Yardıma mı ihtiyacınız var? Destek isteyin."
+=======
+    nonPatientSuccessMsg: "Kaydınız alındı. Personelimiz bilgilendirildi ve birazdan size yardımcı olacaktır."
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
   },
   AR: {
     welcomeTitle: "مرحباً بكم في Huidcentrum Gent",
@@ -248,7 +298,10 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     idCardLabel: "رقم بطاقة الهوية (اختياري)",
     nextBtn: "التالي",
     backBtn: "السابق",
+<<<<<<< HEAD
     returnToStartBtn: "العودة إلى شاشة البداية",
+=======
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     requiredFieldsError: "يرجى تعبئة جميع الحقول المطلوبة (*).",
     invalidFormatError: "صيغة غير صالحة.",
     apptDetailsTitle: "تفاصيل الموعد",
@@ -261,7 +314,11 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     directionPrefix: "يرجى التفضّل بالجلوس في قاعة الانتظار التالية:",
     waitingRoomGround: "قاعة انتظار الطابق الأرضي (Gelijkvloers)",
     waitingRoomFirst: "قاعة انتظار الطابق العلوي (Bovenverdieping)",
+<<<<<<< HEAD
     lateWarningText: "لقد تأخرت. سيناقش معك أحد الموظفين قريباً ما إذا كان موعدك لا يزال ممكناً. يرجى الانتظار قليلاً.",
+=======
+    lateWarningText: "تنبيه: لقد تأخرت عن موعدك. سيتوجّب عليك الانتظار حتى يتم فحص المرضى الملتزمين بمواعيدهم.",
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
     teamsNotificationSent: "تم إخطار الفريق الطبي والأخصائيين بوصولك وفوراً.",
     redirectTimerText: "ستعود هذه الشاشة إلى البداية خلال {seconds} ثوانٍ...",
     noApptTitle: "كيف يمكننا مساعدتك؟",
@@ -272,7 +329,11 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     patientHelpSub: "يرجى إدخال بياناتك حتى يتمكن موظفونا من مساعدتك والتواصل معك.",
     noApptSuccessTitle: "تم إرسال الإشعار",
     noApptSuccessMsg: "تم إرسال رسالة للموظفين. يرجى أخذ قسط من الراحة، وسيقوم الموظف بمساعدتك في أقرب وقت ممكن.",
+<<<<<<< HEAD
     nonPatientSuccessMsg: "تم تسجيل حضورك. تم إرسال إشعار للموظف المسؤول وسيتواصل معك قريباً.",
     helpBtnText: "هل تحتاج مساعدة؟ اطلب المساعدة."
+=======
+    nonPatientSuccessMsg: "تم تسجيل حضورك. تم إرسال إشعار للموظف المسؤول وسيتواصل معك قريباً."
+>>>>>>> parent of 72b55d7 (nieuwe update verlof en ui)
   }
 };
