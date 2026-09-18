@@ -1,10 +1,12 @@
 {
-  "projectId": "neon-cosine-3fbwx",
-  "appId": "1:247578258395:web:4de27d277da93d7f2e95fe",
-  "apiKey": "AIzaSyCNTUtTfqQtrBO7UjIL77DNsgjIyRoF5VA",
-  "authDomain": "neon-cosine-3fbwx.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-9d3a8632-5d90-4817-8122-31e8f0a62f97",
-  "storageBucket": "neon-cosine-3fbwx.firebasestorage.app",
-  "messagingSenderId": "247578258395",
-  "measurementId": ""
+  "projectId": "gen-lang-client-0338487005",
+  "appId": "1:75994096923:web:de658fcda0f2a5f5871fbe",
+  "apiKey": "AIzaSyCknINUDM67EZNwRG9UFbHBAQMOX30faUA",
+  "authDomain": "gen-lang-client-0338487005.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-hcgkioskwerkendg-9d3a8632-5d90-4817-8122-31e8f0a62f97",
+  "storageBucket": "gen-lang-client-0338487005.firebasestorage.app",
+  "messagingSenderId": "75994096923",
+  "measurementId": "",
+  "oAuthClientId": "75994096923-cbqovniufb89j5hier3bi35muco1g6eq.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
 }

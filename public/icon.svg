@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FAF7F5"/>
+      <stop offset="100%" stop-color="#F2E1E1"/>
+    </linearGradient>
+    <linearGradient id="crossGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D98C82"/>
+      <stop offset="100%" stop-color="#B86256"/>
+    </linearGradient>
+    <linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#78A690"/>
+      <stop offset="100%" stop-color="#55846E"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#4D443E" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Background Squircle -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  
+  <!-- Subtle inner border -->
+  <rect x="8" y="8" width="496" height="496" rx="104" fill="none" stroke="#DBC7BD" stroke-width="4" opacity="0.6"/>
+
+  <g filter="url(#shadow)">
+    <!-- Medical Cross Vertical -->
+    <rect x="226" y="126" width="60" height="260" rx="30" fill="url(#crossGrad)"/>
+    <!-- Medical Cross Horizontal -->
+    <rect x="126" y="226" width="260" height="60" rx="30" fill="url(#crossGrad)"/>
+  </g>
+
+  <!-- Organic Care Leaf / Skin Contour Accents -->
+  <path d="M256 126 C290 80, 360 86, 386 126 C412 166, 376 230, 256 256 Z" fill="url(#leafGrad)" opacity="0.88"/>
+  <circle cx="256" cy="256" r="22" fill="#FAF7F5"/>
+  <circle cx="256" cy="256" r="12" fill="#D98C82"/>
+</svg>

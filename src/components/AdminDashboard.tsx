@@ -5,6 +5,9 @@
 
 import React, { useState } from 'react';
 import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timesheet } from '../types';
+import GoogleSheetsBackupSection from './GoogleSheetsBackupSection';
+import { LeavePlanningModule } from './leave/LeavePlanningModule';
+import { TeamsChatAndLogModule } from './TeamsChatAndLogModule';
 import { 
   Users, 
   Settings, 
@@ -22,8 +25,15 @@ import {
   FolderSync,
   CheckCircle,
   CalendarDays,
+  CalendarRange,
   Plus,
-  Pencil
+  Pencil,
+  Lock,
+  ShieldCheck,
+  ShieldAlert,
+  Eye,
+  EyeOff,
+  RefreshCw
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -42,6 +52,9 @@ interface AdminDashboardProps {
   onAddSimulatedPatient: () => void;
   onUpdateTimesheet: (timesheet: Timesheet) => void;
   onDeleteTimesheet: (id: string) => void;
+  onLockAdmin?: () => void;
+  onRunGdprAnonymize?: () => Promise<{ processed: number; anonymized: number }>;
+  onTeamsNotify?: (messageText: string, target?: string, payload?: any) => Promise<boolean>;
 }
 
 export default function AdminDashboard({
@@ -59,10 +72,13 @@ export default function AdminDashboard({
   onClearNotificationLog,
   onAddSimulatedPatient,
   onUpdateTimesheet,
-  onDeleteTimesheet
+  onDeleteTimesheet,
+  onLockAdmin,
+  onRunGdprAnonymize,
+  onTeamsNotify
 }: AdminDashboardProps) {
   // Tabs and filters inside Admin
-  const [activeTab, setActiveTab] = useState<'overview' | 'config' | 'notifications' | 'timesheets'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'config' | 'timesheets' | 'leave'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [doctorFilter, setDoctorFilter] = useState('all');
   const [roomFilter, setRoomFilter] = useState('all');
@@ -97,8 +113,8 @@ export default function AdminDashboard({
     doctors.reduce((acc, dr) => ({ ...acc, [dr.id]: dr.waitingRoom }), {})
   );
 
-  // Timesheets management
-  const [selectedTsMonth, setSelectedTsMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+  // Timesheets management - Default to showing all timesheets so manual entries are never hidden
+  const [selectedTsMonth, setSelectedTsMonth] = useState<string>('');
   const [selectedTsStaff, setSelectedTsStaff] = useState<string>('all');
   const [isEditingTs, setIsEditingTs] = useState(false);
   const [editingTsId, setEditingTsId] = useState<string>('');
@@ -106,6 +122,32 @@ export default function AdminDashboard({
   const [editingTsDate, setEditingTsDate] = useState<string>('');
   const [editingTsIn, setEditingTsIn] = useState<string>('');
   const [editingTsOut, setEditingTsOut] = useState<string>('');
+
+  // Security PIN and GDPR state
+  const [tempPin, setTempPin] = useState(systemConfig.adminPin || '1234');
+  const [showPinMask, setShowPinMask] = useState(true);
+  const [tempGdprAuto, setTempGdprAuto] = useState(systemConfig.gdprAutoAnonymize ?? true);
+  const [tempRetentionHours, setTempRetentionHours] = useState(systemConfig.gdprRetentionHours || 24);
+  const [isGdprRunning, setIsGdprRunning] = useState(false);
+
+  React.useEffect(() => {
+    if (systemConfig.adminPin) setTempPin(systemConfig.adminPin);
+    if (systemConfig.gdprAutoAnonymize !== undefined) setTempGdprAuto(systemConfig.gdprAutoAnonymize);
+    if (systemConfig.gdprRetentionHours) setTempRetentionHours(systemConfig.gdprRetentionHours);
+  }, [systemConfig.adminPin, systemConfig.gdprAutoAnonymize, systemConfig.gdprRetentionHours]);
+
+  const handleTriggerGdpr = async () => {
+    if (!onRunGdprAnonymize) return;
+    setIsGdprRunning(true);
+    try {
+      const res = await onRunGdprAnonymize();
+      showToast(`🛡️ GDPR Opschoning voltooid: ${res.anonymized} dossiers geanonimiseerd (van ${res.processed} geanalyseerd).`, "success");
+    } catch (err: any) {
+      showToast("Fout bij uitvoeren van GDPR opschoning: " + (err?.message || 'Onbekende fout'), "warning");
+    } finally {
+      setIsGdprRunning(false);
+    }
+  };
 
   const [testState, setTestState] = React.useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
   const [testError, setTestError] = React.useState('');
@@ -319,7 +361,10 @@ export default function AdminDashboard({
     onUpdateConfig({
       currentDagdeel: tempPeriod,
       activeStaffId: tempStaffId,
-      teamsWebhookUrl: tempWebhook
+      teamsWebhookUrl: tempWebhook,
+      adminPin: tempPin,
+      gdprAutoAnonymize: tempGdprAuto,
+      gdprRetentionHours: Number(tempRetentionHours)
     });
 
     // Save doctor assignments
@@ -329,7 +374,7 @@ export default function AdminDashboard({
     }));
     onUpdateDoctors(updatedDoctors);
 
-    showToast("⚙️ Configuratie succesvol opgeslagen en toegepast!", "success");
+    showToast("⚙️ Configuratie & beveiligingsinstellingen succesvol opgeslagen!", "success");
   };
 
   const runDagdeelReset = () => {
@@ -351,9 +396,17 @@ export default function AdminDashboard({
   const filteredPatients = patients
     .filter(p => p.status !== 'Archived')
     .filter(p => {
+      const searchLower = searchTerm.toLowerCase();
+      const cleanSearchDigits = searchTerm.replace(/\D/g, '');
+      const patientRegClean = (p.nationalRegistryNum || '').replace(/\D/g, '');
+      const patientIdClean = (p.idCardNum || '').replace(/\D/g, '');
+
       const matchSearch = 
-        `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        (p.nationalRegistryNum && p.nationalRegistryNum.includes(searchTerm));
+        `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchLower) || 
+        (p.nationalRegistryNum && p.nationalRegistryNum.includes(searchTerm)) ||
+        (cleanSearchDigits && patientRegClean.includes(cleanSearchDigits)) ||
+        (p.idCardNum && p.idCardNum.includes(searchTerm)) ||
+        (cleanSearchDigits && patientIdClean.includes(cleanSearchDigits));
       const matchDoc = doctorFilter === 'all' || p.doctorId === doctorFilter;
       const matchRoom = roomFilter === 'all' || p.waitingRoom === roomFilter;
       const matchStatus = statusFilter === 'all' || p.status === statusFilter;
@@ -473,15 +526,15 @@ export default function AdminDashboard({
     }
   };
 
-  // Helper to mask Rijksregisternummer
+  // Helper to format Rijksregisternummer for live overview: without dots and dashes (only full continuous digits)
   const formatRegistryNum = (num: string): string => {
-    if (!gdprMaskActive) return num;
-    if (num === '-' || num.length < 6) return num;
-    // Replace middle parts for security
-    // e.g. 85.08.14-123.45 to 85.**.**-***.**
-    return num.replace(/\d/g, (char, index) => {
-      if (index < 2 || index > 12) return char;
-      if (char === '.' || char === '-') return char;
+    if (!num || num === '-') return '-';
+    // Remove all dots, hyphens, and whitespace: display only the clean complete number
+    const cleanNum = num.replace(/[.\-\s]/g, '');
+    if (!gdprMaskActive) return cleanNum;
+    if (cleanNum.length < 6) return cleanNum;
+    return cleanNum.replace(/\d/g, (char, index) => {
+      if (index < 2 || index >= cleanNum.length - 2) return char;
       return '*';
     });
   };
@@ -495,6 +548,32 @@ export default function AdminDashboard({
       return `**/**/${parts[2]}`;
     }
     return '**.**.****';
+  };
+
+  const handleSendTeamsChatMessage = async (messageText: string, target?: string, payload?: any): Promise<boolean> => {
+    if (onTeamsNotify) {
+      return await onTeamsNotify(messageText, target, payload);
+    }
+    try {
+      const targetWebhook = systemConfig.teamsWebhookUrl;
+      if (targetWebhook && targetWebhook.startsWith('http')) {
+        const res = await fetch('/api/teams-notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            webhookUrl: targetWebhook,
+            messageText,
+            title: payload?.title || 'Huidcentrum Gent - Balie Teams Chat',
+            payload
+          })
+        });
+        return res.ok;
+      }
+      return true;
+    } catch (e) {
+      console.error('Fout bij verzenden Teams chat:', e);
+      return false;
+    }
   };
 
   return (
@@ -617,84 +696,102 @@ export default function AdminDashboard({
         </div>
       )}
       
-      {/* Admin Panel Header Banner */}
-      <div className="bg-button-beige text-text-main px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-border-soft shrink-0">
+      {/* Admin Panel Header Banner - Apple Glass Header */}
+      <div className="apple-glass px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 border-b border-black/5 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="bg-white p-2 rounded-lg border border-border-soft">
-            <Settings className="h-5 w-5 text-text-sub" />
+          <div className="h-9 w-9 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[#0071E3] flex items-center justify-center">
+            <Settings className="h-4.5 w-4.5" />
           </div>
           <div>
-            <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
+            <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
               Dermato-Care Portaal 
-              <span className="text-[11px] font-semibold bg-button-active text-text-main rounded-md px-2 py-0.5 border border-border-soft">
+              <span className="text-[11px] font-semibold bg-blue-500/10 text-[#0071E3] border border-blue-500/20 rounded-full px-2.5 py-0.5">
                 Live Beheer
               </span>
             </h2>
-            <p className="text-xs text-text-sub">
-              Dashboard voor dokters en ondersteuning &bull; Actief dagdeel: <strong className="text-text-main capitalize">{systemConfig.currentDagdeel}</strong>
-            </p>
           </div>
         </div>
 
         {/* Action controls inside header */}
-        <div className="flex gap-2 text-xs flex-wrap">
-          <div className="bg-white px-3 py-1.5 rounded-lg border border-border-soft flex items-center gap-1.5 text-text-sub">
+        <div className="flex gap-2 text-xs flex-wrap items-center">
+          <div className="bg-white/80 px-3.5 py-1.5 rounded-full border border-black/5 flex items-center gap-1.5 text-slate-600 shadow-2xs backdrop-blur-xs">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            Ondersteuning: <strong className="text-text-main">{activeStaffName}</strong>
+            Ondersteuning: <strong className="text-slate-900">{activeStaffName}</strong>
           </div>
           <button
             onClick={() => setActiveTab('config')}
-            className={`px-3.5 py-1.5 rounded-lg border transition cursor-pointer font-semibold ${activeTab === 'config' ? 'bg-button-active border-border-soft hover:bg-button-active/85 text-text-main' : 'bg-white border-border-soft text-text-sub hover:bg-bg-medical'}`}
+            className={`px-3.5 py-1.5 rounded-full border transition duration-200 cursor-pointer font-semibold shadow-2xs ${
+              activeTab === 'config' 
+                ? 'bg-[#0071E3] border-blue-500/30 text-white shadow-sm' 
+                : 'bg-white/80 border-black/5 text-slate-600 hover:bg-white hover:text-slate-900'
+            }`}
           >
             Configuratie & Reset
           </button>
+          {onLockAdmin && (
+            <button
+              id="btn-admin-header-lock"
+              onClick={onLockAdmin}
+              className="px-3.5 py-1.5 rounded-full border border-red-200 bg-white/80 hover:bg-red-50 text-slate-700 hover:text-red-700 transition cursor-pointer font-semibold flex items-center gap-1.5 shadow-2xs"
+              title="Vergrendel Admin Dashboard (Keer terug naar kiosk)"
+            >
+              <Lock className="h-3.5 w-3.5 text-red-500" />
+              <span>Vergrendel Admin</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Admin Tabs */}
-      <div className="bg-white border-b border-border-soft px-6 py-2.5 flex justify-between items-center text-xs shrink-0 flex-wrap gap-2">
-        <div className="flex gap-2">
+      {/* Admin Tabs - Apple Glass Pill Bar */}
+      <div className="bg-white/60 border-b border-black/5 px-6 py-2.5 flex justify-between items-center text-xs shrink-0 flex-wrap gap-2 backdrop-blur-md">
+        <div className="flex gap-1.5 bg-slate-200/50 p-1 rounded-2xl border border-black/5 shadow-inner">
           <button
             onClick={() => setActiveTab('overview')}
-            className={`px-4 py-2 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${activeTab === 'overview' ? 'bg-bg-medical text-text-main font-bold' : 'text-text-sub hover:text-text-main'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'overview' 
+                ? 'bg-white text-slate-900 shadow-sm border border-black/5' 
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
           >
-            <Users className="h-4 w-4 text-text-sub" />
+            <Users className="h-3.5 w-3.5 text-[#0071E3]" />
             Live Patiëntenoverzicht ({filteredPatients.length})
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('notifications')}
-            className={`px-4 py-2 rounded-lg font-bold transition flex items-center gap-1.5 relative cursor-pointer ${activeTab === 'notifications' ? 'bg-bg-medical text-text-main font-bold' : 'text-text-sub hover:text-text-main'}`}
-          >
-            <BellRing className="h-4 w-4 text-text-sub" />
-            Teams Logboek
-            {notifications.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] h-4.5 min-w-4.5 px-1 rounded-full flex items-center justify-center font-bold">
-                {notifications.length}
-              </span>
-            )}
           </button>
 
           <button
             onClick={() => setActiveTab('timesheets')}
-            className={`px-4 py-2 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${activeTab === 'timesheets' ? 'bg-bg-medical text-text-main font-bold' : 'text-text-sub hover:text-text-main'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'timesheets' 
+                ? 'bg-white text-slate-900 shadow-sm border border-black/5' 
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
           >
-            <Clock className="h-4 w-4 text-text-sub" />
+            <Clock className="h-3.5 w-3.5 text-[#0071E3]" />
             Personeel Tiktijden
+          </button>
+
+          <button
+            onClick={() => setActiveTab('leave')}
+            className={`px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'leave' 
+                ? 'bg-[#0071E3] text-white font-bold shadow-sm' 
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <CalendarRange className="h-3.5 w-3.5" />
+            Verlofplanning
           </button>
         </div>
 
-        <div className="flex gap-3 items-center">
+        <div className="flex gap-2 items-center">
           {/* Quick Demo Assist */}
           <button
             onClick={onAddSimulatedPatient}
-            className="bg-accent-peach text-text-main hover:bg-accent-peach/85 border border-border-soft px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1"
+            className="bg-white/80 hover:bg-white text-[#0071E3] hover:text-blue-700 border border-blue-200 px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition flex items-center gap-1.5 shadow-2xs"
             title="Klik dit om direct een patiënt te simuleren voor snelle feedback!"
           >
             <TrendingUp className="h-3.5 w-3.5" />
             + Simuleren Patiënt
           </button>
-
         </div>
       </div>
 
@@ -704,6 +801,17 @@ export default function AdminDashboard({
         {/* TAB 1: LIVE PATENT LIST AND STATISTICS */}
         {activeTab === 'overview' && (
           <div className="space-y-4 animate-fade-in">
+            {/* TEAMS LOGBOEK & DIRECTE CHAT MODULE (BOVENIN LIVE PATIËNTENOVERZICHT) */}
+            <TeamsChatAndLogModule
+              notifications={notifications}
+              doctors={doctors}
+              activeStaffName={activeStaffName}
+              teamsWebhookUrl={systemConfig.teamsWebhookUrl}
+              onClearLog={onClearNotificationLog}
+              onSendTeamsMessage={handleSendTeamsChatMessage}
+              onOpenConfig={() => setActiveTab('config')}
+            />
+
             {/* Quick Micro Clinic Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
@@ -810,6 +918,7 @@ export default function AdminDashboard({
                       <th className="p-3">Patiënt Naam</th>
                       <th className="p-3">Geboortedatum</th>
                       <th className="p-3">Rijksregisternummer</th>
+                      <th className="p-3">ID-Kaartnummer</th>
                       <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => toggleSort('appointmentTime')}>
                         Afspraak {sortBy === 'appointmentTime' ? (sortOrder === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
@@ -821,7 +930,7 @@ export default function AdminDashboard({
                   <tbody>
                     {filteredPatients.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="text-center p-8 text-slate-400 font-medium">
+                        <td colSpan={9} className="text-center p-8 text-slate-400 font-medium">
                           Geen actieve aanmeldingen gevonden voor de gekozen filters.
                         </td>
                       </tr>
@@ -840,7 +949,38 @@ export default function AdminDashboard({
                               {formatBirthDate(patient.birthDate)}
                             </td>
                             <td className="p-3 font-mono text-slate-600 whitespace-nowrap">
-                              {formatRegistryNum(patient.nationalRegistryNum)}
+                              {patient.hasForeignNationality ? (
+                                <div className="flex flex-col gap-0.5">
+                                  {patient.nationalRegistryNum && patient.nationalRegistryNum !== '-' ? (
+                                    <span>{formatRegistryNum(patient.nationalRegistryNum)}</span>
+                                  ) : (
+                                    <span className="text-zinc-400 font-sans italic text-[10px]">Geen rijksregister</span>
+                                  )}
+                                  <span className="inline-flex items-center text-[9px] font-sans font-medium px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200/60 w-fit">
+                                    🌍 Buitenlands
+                                  </span>
+                                </div>
+                              ) : patient.unknownIdentification ? (
+                                <div className="flex flex-col gap-0.5">
+                                  {patient.nationalRegistryNum && patient.nationalRegistryNum !== '-' ? (
+                                    <span>{formatRegistryNum(patient.nationalRegistryNum)}</span>
+                                  ) : (
+                                    <span className="text-zinc-400 font-sans italic text-[10px]">Niet gekend</span>
+                                  )}
+                                  <span className="inline-flex items-center text-[9px] font-sans font-medium px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/60 w-fit">
+                                    ❓ ID niet gekend
+                                  </span>
+                                </div>
+                              ) : (
+                                <span>{formatRegistryNum(patient.nationalRegistryNum)}</span>
+                              )}
+                            </td>
+                            <td className="p-3 font-mono text-slate-600 whitespace-nowrap">
+                              {patient.idCardNum && patient.idCardNum !== '-' ? (
+                                <span className="font-mono text-slate-700 font-medium">{patient.idCardNum}</span>
+                              ) : (
+                                <span className="text-zinc-400 font-sans italic text-[11px]">-</span>
+                              )}
                             </td>
                             <td className="p-3 font-semibold whitespace-nowrap">
                               {patient.appointmentTime ? (
@@ -1067,6 +1207,186 @@ export default function AdminDashboard({
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+
+            {/* PINCODE & BEVEILIGING (RBAC) */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-3">
+                  <div className="p-1.5 rounded-lg bg-amber-50 text-amber-600 border border-amber-200">
+                    <Lock className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-base">Pincode & Beveiliging</h3>
+                    <p className="text-[11px] text-slate-500">Toegangsbeveiliging voor beheer en kiosk</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3.5 text-xs">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Admin & Balie Pincode:
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          id="input-admin-pin"
+                          type={showPinMask ? 'password' : 'text'}
+                          maxLength={8}
+                          value={tempPin}
+                          onChange={(e) => setTempPin(e.target.value.replace(/\D/g, ''))}
+                          placeholder="1234"
+                          className="w-full p-2.5 pr-10 text-sm tracking-widest font-mono rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:border-amber-500 font-bold"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPinMask(!showPinMask)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          title={showPinMask ? 'Toon pincode' : 'Verberg pincode'}
+                        >
+                          {showPinMask ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (tempPin.length < 4) {
+                            showToast("Pincode moet minstens 4 cijfers bevatten.", "warning");
+                            return;
+                          }
+                          onUpdateConfig({ adminPin: tempPin });
+                          showToast("🔒 Pincode succesvol bijgewerkt!", "success");
+                        }}
+                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-xs transition cursor-pointer"
+                      >
+                        Opslaan
+                      </button>
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-1 block">
+                      Standaard ingesteld op <strong>1234</strong>. Wordt gevraagd bij openen van het beheer of ontgrendelen van de kiosk.
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-amber-50/60 rounded-lg border border-amber-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-amber-950">Kiosk Kiosk-modus status:</span>
+                      <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                        {systemConfig.kioskLocked ? 'Vergrendeld' : 'Vrij / Kiosk'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      In kioskmodus kan het personeel via de vergrendelknop bovenaan het beheerpaneel direct terugkeren naar het aanmeldscherm.
+                    </p>
+                    {onLockAdmin && (
+                      <button
+                        type="button"
+                        onClick={onLockAdmin}
+                        className="w-full mt-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-1.5 px-3 rounded-md transition cursor-pointer flex items-center justify-center gap-1.5 text-xs shadow-xs"
+                      >
+                        <Lock className="h-3.5 w-3.5" />
+                        Vergrendel Admin Nu (Keer terug naar Kiosk)
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* GDPR & DATA RETENTION AUTOMATISERING */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-3">
+                  <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200">
+                    <ShieldCheck className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-base">GDPR & Gegevensretentie</h3>
+                    <p className="text-[11px] text-slate-500">Automatische periodieke anonimisering (AVG Art. 5)</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3.5 text-xs">
+                  <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                    <div>
+                      <span className="font-bold text-slate-800 block">Automatische anonimisering</span>
+                      <span className="text-[10px] text-slate-500">Nachtelijke opschoning van patiëntidentifiers</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tempGdprAuto}
+                        onChange={(e) => {
+                          const val = e.target.checked;
+                          setTempGdprAuto(val);
+                          onUpdateConfig({ gdprAutoAnonymize: val });
+                          showToast(val ? "GDPR automatische anonimisering ingeschakeld." : "GDPR automatische anonimisering uitgeschakeld.", "info");
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Bewaartermijn voor identificatoren:
+                    </label>
+                    <select
+                      value={tempRetentionHours}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setTempRetentionHours(val);
+                        onUpdateConfig({ gdprRetentionHours: val });
+                        showToast(`Bewaartermijn aangepast naar ${val} uur.`, "info");
+                      }}
+                      className="w-full p-2 rounded-lg border border-slate-200 bg-slate-50 font-semibold text-slate-800"
+                    >
+                      <option value={12}>12 uur (Dagdeel-gebonden)</option>
+                      <option value={24}>24 uur (Aanbevolen & Standaard)</option>
+                      <option value={48}>48 uur (2 dagen)</option>
+                      <option value={72}>72 uur (3 dagen)</option>
+                      <option value={168}>7 dagen (168 uur)</option>
+                    </select>
+                  </div>
+
+                  {/* GDPR Status Metrics */}
+                  <div className="grid grid-cols-3 gap-2 py-1">
+                    <div className="p-2 rounded-lg bg-slate-50 border border-slate-150 text-center">
+                      <span className="text-[10px] text-slate-500 block">Totaal dossiers</span>
+                      <strong className="text-sm text-slate-800 font-bold">{patients.length}</strong>
+                    </div>
+                    <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-center">
+                      <span className="text-[10px] text-emerald-700 block">Geanonimiseerd</span>
+                      <strong className="text-sm text-emerald-800 font-bold">
+                        {patients.filter(p => p.isAnonymized).length}
+                      </strong>
+                    </div>
+                    <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-center">
+                      <span className="text-[10px] text-blue-700 block">Identificeerbaar</span>
+                      <strong className="text-sm text-blue-800 font-bold">
+                        {patients.filter(p => !p.isAnonymized).length}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-slate-500 flex justify-between items-center pt-1 border-t border-slate-100">
+                    <span>Laatste opschoning:</span>
+                    <strong className="text-slate-700">
+                      {systemConfig.lastGdprRun ? new Date(systemConfig.lastGdprRun).toLocaleString('nl-BE') : 'Nog niet uitgevoerd'}
+                    </strong>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleTriggerGdpr}
+                    disabled={isGdprRunning}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold py-2 rounded-lg transition cursor-pointer text-xs flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${isGdprRunning ? 'animate-spin' : ''}`} />
+                    <span>{isGdprRunning ? 'Anonimiseren...' : 'Voer GDPR-Opschoning Nu Uit'}</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1330,69 +1650,7 @@ export default function AdminDashboard({
           </div>
         )}
 
-        {/* TAB 3: TEAMS NOTIFICATION DICTIONARY & LOG */}
-        {activeTab === 'notifications' && (
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4 animate-fade-in">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-2.5">
-              <div className="flex items-center gap-2">
-                <BellRing className="h-5 w-5 text-indigo-500 animate-bounce" />
-                <div>
-                  <h3 className="font-bold text-slate-800 text-base">Microsoft Teams Webhook Feed</h3>
-                  <p className="text-xs text-slate-400">Verzonden berichten en payloads naar het artsen- en baliekanaal</p>
-                </div>
-              </div>
-
-              <button
-                onClick={onClearNotificationLog}
-                className="text-slate-400 hover:text-red-500 text-xs flex items-center gap-1 cursor-pointer font-semibold"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Log Leegmaken
-              </button>
-            </div>
-
-            {notifications.length === 0 ? (
-              <div className="text-center p-8 text-slate-400 space-y-2">
-                <HelpCircle className="h-10 w-10 text-slate-300 mx-auto" />
-                <p className="font-medium text-xs">Er zijn nog geen Microsoft Teams notificaties uitgestuurd.</p>
-                <p className="text-[10px] text-slate-400">Gebruik de Kiosk app om een patiënt aan te melden.</p>
-              </div>
-            ) : (
-              <div className="space-y-3.5 max-h-[290px] overflow-y-auto pr-2">
-                {notifications.map((notif) => (
-                  <div key={notif.id} className="p-3.5 rounded-xl border border-slate-150 bg-slate-50 flex flex-col sm:flex-row justify-between gap-3 text-xs">
-                    <div className="space-y-1.5 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-slate-500 font-bold bg-slate-200 px-2 py-0.5 rounded text-[10px]">
-                          {notif.timestamp}
-                        </span>
-                        
-                        <span className="font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] border border-indigo-100">
-                          Bestemming: {notif.targetDoctor || notif.targetStaff || 'Algemeen'}
-                        </span>
-
-                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-150 px-2 py-0.5 rounded text-[10px] font-bold">
-                          HTTP 200 {notif.status}
-                        </span>
-                      </div>
-
-                      <div className="text-[#2C2121] leading-relaxed select-all border-l-2 border-slate-300 pl-2 py-1 bg-white rounded shadow-sm text-[11px] font-mono">
-                        {notif.messagePreview}
-                      </div>
-                    </div>
-
-                    <div className="text-[9px] font-mono bg-slate-900 text-slate-300 p-2 rounded-lg max-w-sm overflow-x-auto select-all shrink-0">
-                      <div className="text-indigo-400 font-semibold mb-1">Payload JSON:</div>
-                      <pre>{JSON.stringify(notif.payload, null, 2)}</pre>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB 4: TIMESHEETS */}
+        {/* TAB 2: TIMESHEETS */}
         {activeTab === 'timesheets' && (
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4 animate-fade-in">
             <div className="flex justify-between items-center border-b border-slate-100 pb-2.5">
@@ -1400,7 +1658,6 @@ export default function AdminDashboard({
                 <Clock className="h-5 w-5 text-indigo-500" />
                 <div>
                   <h3 className="font-bold text-slate-800 text-base">Personeel Tiktijden</h3>
-                  <p className="text-xs text-slate-400">Intik- en uittik klok en maandelijks overzicht</p>
                 </div>
               </div>
             </div>
@@ -1473,14 +1730,38 @@ export default function AdminDashboard({
               {/* Right Column: Monthly Overview */}
               <div className="md:col-span-2 space-y-4">
                 <div className="flex items-center justify-between gap-4 flex-wrap bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTsMonth('')}
+                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${!selectedTsMonth ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                      >
+                        Alle tiktijden ({(timesheets || []).length})
+                      </button>
+                    </div>
                     <div className="flex items-center gap-2 text-xs">
-                      <label className="font-bold text-slate-600">Maand:</label>
-                      <input type="month" value={selectedTsMonth} onChange={e => setSelectedTsMonth(e.target.value)} className="p-1 rounded border border-slate-300" />
+                      <label className="font-bold text-slate-600">Filter maand:</label>
+                      <input 
+                        type="month" 
+                        value={selectedTsMonth} 
+                        onChange={e => setSelectedTsMonth(e.target.value)} 
+                        className={`p-1 rounded border text-xs ${selectedTsMonth ? 'border-indigo-500 bg-indigo-50 font-bold text-indigo-900' : 'border-slate-300 bg-white'}`} 
+                      />
+                      {selectedTsMonth && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTsMonth('')}
+                          className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded text-[10px] transition cursor-pointer"
+                          title="Filter wissen"
+                        >
+                          ✕ Wis filter
+                        </button>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 text-xs">
                       <label className="font-bold text-slate-600">Medewerker:</label>
-                      <select value={selectedTsStaff} onChange={e => setSelectedTsStaff(e.target.value)} className="p-1 rounded border border-slate-300 max-w-[150px]">
+                      <select value={selectedTsStaff} onChange={e => setSelectedTsStaff(e.target.value)} className="p-1 rounded border border-slate-300 max-w-[150px] bg-white">
                         <option value="all">Iedereen</option>
                         {activeStaffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
@@ -1502,9 +1783,10 @@ export default function AdminDashboard({
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {(() => {
-                        const filteredTs = timesheets.filter(ts => {
+                        const filteredTs = (timesheets || []).filter(ts => {
                           if (selectedTsStaff !== 'all' && ts.staffId !== selectedTsStaff) return false;
-                          return ts.date.startsWith(selectedTsMonth);
+                          if (selectedTsMonth && !(ts.date || '').startsWith(selectedTsMonth)) return false;
+                          return true;
                         }).sort((a, b) => {
                           const dateA = a.date || '';
                           const dateB = b.date || '';
@@ -1520,36 +1802,67 @@ export default function AdminDashboard({
                           return (
                             <tr>
                               <td colSpan={6} className="p-6 text-center text-slate-400">
-                                Geen tiktijden gevonden voor deze selectie.
+                                <Clock className="h-6 w-6 mx-auto mb-1.5 opacity-40 text-slate-400" />
+                                <p className="font-medium text-slate-600">Geen tiktijden gevonden voor deze selectie.</p>
+                                {selectedTsMonth && (timesheets || []).length > 0 && (
+                                  <div className="mt-2">
+                                    <p className="text-xs text-slate-400">
+                                      Er zijn {(timesheets || []).length} tiktijden in andere maanden geregistreerd.
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedTsMonth('')}
+                                      className="mt-1 inline-flex items-center text-xs font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                                    >
+                                      Toon alle geregistreerde periodes
+                                    </button>
+                                  </div>
+                                )}
                               </td>
                             </tr>
-                          )
+                          );
                         }
 
                         return (
                           <>
                             {filteredTs.map(ts => {
                               let durStr = '-';
-                              if (ts.clockOut) {
-                                const inTime = new Date(ts.clockIn).getTime();
-                                const outTime = new Date(ts.clockOut).getTime();
-                                const diffMin = Math.floor((outTime - inTime) / 60000);
-                                totalMinutes += diffMin;
-                                const h = Math.floor(diffMin / 60);
-                                const m = diffMin % 60;
-                                durStr = `${h}u ${m}m`;
+                              let inTimeStr = '--:--';
+                              let outTimeStr: string | null = null;
+
+                              if (ts.clockIn) {
+                                const inDate = new Date(ts.clockIn);
+                                if (!isNaN(inDate.getTime())) {
+                                  inTimeStr = inDate.toTimeString().slice(0, 5);
+                                }
                               }
 
-                              const inDate = new Date(ts.clockIn);
-                              const outDate = ts.clockOut ? new Date(ts.clockOut) : null;
+                              if (ts.clockOut) {
+                                const outDate = new Date(ts.clockOut);
+                                if (!isNaN(outDate.getTime())) {
+                                  outTimeStr = outDate.toTimeString().slice(0, 5);
+                                }
+                              }
+
+                              if (ts.clockIn && ts.clockOut) {
+                                const inTime = new Date(ts.clockIn).getTime();
+                                const outTime = new Date(ts.clockOut).getTime();
+                                if (!isNaN(inTime) && !isNaN(outTime) && outTime >= inTime) {
+                                  const diffMin = Math.floor((outTime - inTime) / 60000);
+                                  totalMinutes += diffMin;
+                                  const h = Math.floor(diffMin / 60);
+                                  const m = diffMin % 60;
+                                  durStr = `${h}u ${m}m`;
+                                }
+                              }
 
                               return (
                                 <tr key={ts.id} className="hover:bg-slate-50 transition">
-                                  <td className="p-3 font-medium text-slate-800">{ts.date}</td>
-                                  <td className="p-3 text-slate-600">{ts.staffName}</td>
-                                  <td className="p-3 text-slate-600 font-mono">{inDate.toTimeString().slice(0, 5)}</td>
+                                  <td className="p-3 font-medium text-slate-800">{ts.date || '-'}</td>
+                                  <td className="p-3 text-slate-600">{ts.staffName || '-'}</td>
+                                  <td className="p-3 text-slate-600 font-mono">{inTimeStr}</td>
                                   <td className="p-3 text-slate-600 font-mono">
-                                    {outDate ? outDate.toTimeString().slice(0, 5) : <span className="text-emerald-600 text-[10px] bg-emerald-50 px-1 rounded font-bold">Nog ingeklokt</span>}
+                                    {outTimeStr ? outTimeStr : <span className="text-emerald-600 text-[10px] bg-emerald-50 px-1 rounded font-bold">Nog ingeklokt</span>}
                                   </td>
                                   <td className="p-3 font-bold text-indigo-700">{durStr}</td>
                                   <td className="p-3 text-right space-x-2">
@@ -1561,7 +1874,7 @@ export default function AdminDashboard({
                                     </button>
                                   </td>
                                 </tr>
-                              )
+                              );
                             })}
                             <tr className="bg-indigo-50 font-bold border-t-2 border-indigo-200">
                               <td colSpan={4} className="p-3 text-right text-indigo-900">Totaal deze selectie:</td>
@@ -1577,6 +1890,21 @@ export default function AdminDashboard({
                 </div>
               </div>
             </div>
+
+            {/* Google Sheets Backup & 22:00 Automation Card - Placed under intik functionaliteit */}
+            <GoogleSheetsBackupSection
+              timesheets={timesheets}
+              staffList={activeStaffList}
+              systemConfig={systemConfig}
+              onUpdateConfig={onUpdateConfig}
+            />
+          </div>
+        )}
+
+        {/* Tab 5: Verlofplanning Module */}
+        {activeTab === 'leave' && (
+          <div className="p-6">
+            <LeavePlanningModule />
           </div>
         )}
 

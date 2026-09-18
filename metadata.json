@@ -2,5 +2,7 @@
   "name": "Digitaal Ontvangstsysteem Dermatologie",
   "description": "Een compleet digitaal ontvangstsysteem bestaande uit een patiënten Kiosk-tablet en een beveiligd Web-Admin dashboard met Microsoft Teams koppelingen en GDPR-compliance.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

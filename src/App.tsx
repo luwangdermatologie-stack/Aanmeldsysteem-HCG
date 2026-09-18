@@ -7,6 +7,9 @@ import React, { useState, useEffect } from 'react';
 import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timesheet } from './types';
 import KioskApp from './components/KioskApp';
 import AdminDashboard from './components/AdminDashboard';
+import PinLockModal from './components/PinLockModal';
+import { executeGdprAnonymization } from './services/gdprService';
+import { getAccessToken, backupTimesheetsToGoogleSheets } from './services/googleSheetsService';
 import { 
   Monitor, 
   RotateCcw, 
@@ -18,7 +21,9 @@ import {
   BriefcaseMedical,
   ShieldAlert,
   ClipboardList,
-  HeartPulse
+  HeartPulse,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { db, initializeDatabaseIfEmpty, handleFirestoreError, OperationType, sanitizeForFirestore } from './firebase';
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, getDocs } from 'firebase/firestore';
@@ -27,7 +32,8 @@ const INITIAL_DOCTORS: Doctor[] = [
   { id: 'dr-mertens', name: 'Dr. Elisabeth Mertens', specialty: 'Algemene Dermatologie', waitingRoom: 'Gelijkvloers', isAvailable: true, avatarColor: 'bg-teal-500' },
   { id: 'dr-vancamp', name: 'Dr. Jasper Van Camp', specialty: 'Huidkanker & Dermatochirurgie', waitingRoom: 'Bovenverdieping', isAvailable: true, avatarColor: 'bg-rose-500' },
   { id: 'dr-nilsson', name: 'Dr. Linnea Nilsson', specialty: 'Esthetische Dermatologie', waitingRoom: 'Gelijkvloers', isAvailable: true, avatarColor: 'bg-indigo-500' },
-  { id: 'dr-mansour', name: 'Dr. Ahmed Mansour', specialty: 'Kinderdermatologie', waitingRoom: 'Bovenverdieping', isAvailable: true, avatarColor: 'bg-amber-500' }
+  { id: 'dr-mansour', name: 'Dr. Ahmed Mansour', specialty: 'Kinderdermatologie', waitingRoom: 'Bovenverdieping', isAvailable: true, avatarColor: 'bg-amber-500' },
+  { id: 'nurse-verpleegkundige', name: 'De verpleegkundige', specialty: 'Verpleegkundige zorg & Wondzorg', waitingRoom: 'Gelijkvloers', isAvailable: true, avatarColor: 'bg-emerald-500' }
 ];
 
 const INITIAL_STAFF: ActiveStaff[] = [
@@ -123,11 +129,21 @@ export default function App() {
     }
   }, [viewMode]);
   
-  // State synchronized with Firebase Firestore
+  // State synchronized with Firebase Firestore & localStorage resilient backup
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [staff, setStaff] = useState<ActiveStaff[]>([]);
-  const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
+  const [timesheets, setTimesheets] = useState<Timesheet[]>(() => {
+    try {
+      const cached = localStorage.getItem('derm_timesheets_store');
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch (e) {
+      console.warn("Could not read local timesheets store", e);
+    }
+    return [];
+  });
   const [systemConfig, setSystemConfig] = useState<SystemConfig>({
     currentDagdeel: 'ochtend',
     activeStaffId: 'staff-karina',
@@ -140,48 +156,165 @@ export default function App() {
     initializeDatabaseIfEmpty();
   }, []);
 
-  // Daily patient cleanup (Midnight GMT+1)
+  // Periodic & Daily GDPR Anonymization (Retention cleanup based on retention hours)
   useEffect(() => {
-    const checkAndClearDaily = async () => {
-      const now = new Date();
-      // GMT+1 is UTC+1. Add 1 hour to current time to get the GMT+1 time
-      const gmt1Date = new Date(now.getTime() + 1 * 60 * 60 * 1000);
-      const gmt1DateStr = gmt1Date.toISOString().slice(0, 10);
-      const gmt1Hour = gmt1Date.getUTCHours();
-      
-      let lastClearStr = null;
-      try {
-        lastClearStr = localStorage.getItem('last_clear_date_gmt1');
-      } catch (e) {
-        // Ignore
-      }
+    const checkAndRunGdpr = async () => {
+      if (systemConfig.gdprAutoAnonymize === false) return;
 
-      // If it's 00:xx in GMT+1, and we haven't cleared today
-      if (gmt1Hour === 0 && lastClearStr !== gmt1DateStr) {
+      const now = new Date();
+      const lastRun = systemConfig.lastGdprRun ? new Date(systemConfig.lastGdprRun).getTime() : 0;
+      const hoursSinceLastRun = (now.getTime() - lastRun) / (1000 * 60 * 60);
+
+      // Run if more than 12 hours have passed, or never ran
+      if (hoursSinceLastRun >= 12 || lastRun === 0) {
         try {
-          const snapshot = await getDocs(collection(db, 'patients'));
-          if (!snapshot.empty) {
-            const batch = writeBatch(db);
-            snapshot.forEach(doc => {
-              batch.delete(doc.ref);
-            });
-            await batch.commit();
-          }
-          try {
-            localStorage.setItem('last_clear_date_gmt1', gmt1DateStr);
-          } catch (e) {}
-          console.log("Daily patient cleanup completed (GMT+1 Midnight).");
+          console.log("Executing periodic GDPR retention anonymization...");
+          await executeGdprAnonymization(systemConfig.gdprRetentionHours || 24);
         } catch (err) {
-          console.error("Daily patient cleanup failed:", err);
+          console.error("GDPR automated retention scan failed:", err);
         }
       }
     };
 
-    // Check once on mount, then every 5 minutes
-    checkAndClearDaily();
-    const interval = setInterval(checkAndClearDaily, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+    const timeout = setTimeout(checkAndRunGdpr, 4000);
+    const interval = setInterval(checkAndRunGdpr, 30 * 60 * 1000); // Check every 30 mins
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [systemConfig.gdprAutoAnonymize, systemConfig.gdprRetentionHours, systemConfig.lastGdprRun]);
+
+  // Automated Daily Backup of Staff Timesheets to Google Sheets at 22:00 (preserving full history)
+  useEffect(() => {
+    const checkAndRunGoogleSheetsBackup = async () => {
+      // If auto-backup is disabled, skip
+      if (systemConfig.googleSheetsBackupEnabled === false) return;
+
+      const token = getAccessToken();
+      if (!token) return; // Requires active Google session
+
+      const now = new Date();
+      const currentHour = now.getHours(); // 0-23
+      const targetHour = systemConfig.googleSheetsBackupHour ?? 22; // 22:00 every evening
+      const todayStr = now.toISOString().slice(0, 10);
+      const lastRunDate = systemConfig.lastGoogleSheetsBackupAt ? systemConfig.lastGoogleSheetsBackupAt.slice(0, 10) : '';
+
+      // Trigger when it is 22:00 (or later if missed earlier today) and hasn't backed up today yet
+      if (currentHour >= targetHour && lastRunDate !== todayStr) {
+        console.log(`[Google Sheets Auto-Backup] Dagelijkse avondrun om ${targetHour}:00 gestart...`);
+        try {
+          const result = await backupTimesheetsToGoogleSheets(
+            token,
+            timesheets,
+            staff,
+            systemConfig.googleSheetsSpreadsheetId
+          );
+
+          handleUpdateConfig({
+            googleSheetsSpreadsheetId: result.spreadsheetId,
+            googleSheetsSpreadsheetUrl: result.spreadsheetUrl,
+            lastGoogleSheetsBackupAt: result.timestamp,
+            lastGoogleSheetsBackupStatus: 'Success',
+            lastGoogleSheetsBackupCount: result.count,
+            lastGoogleSheetsBackupMessage: `${result.count} tiktijden succesvol gearchiveerd om 22:00 met historiek.`
+          });
+          console.log(`[Google Sheets Auto-Backup] Succesvol voltooid: ${result.count} records gesynchroniseerd.`);
+        } catch (err: any) {
+          console.error('[Google Sheets Auto-Backup] Fout tijdens 22:00 synchronisatie:', err);
+          handleUpdateConfig({
+            lastGoogleSheetsBackupStatus: 'Failed',
+            lastGoogleSheetsBackupMessage: err.message || 'Fout tijdens automatische backup.'
+          });
+        }
+      }
+    };
+
+    // Check shortly after boot and every 60 seconds
+    const timeout = setTimeout(checkAndRunGoogleSheetsBackup, 6000);
+    const interval = setInterval(checkAndRunGoogleSheetsBackup, 60 * 1000);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [
+    systemConfig.googleSheetsBackupEnabled,
+    systemConfig.googleSheetsBackupHour,
+    systemConfig.googleSheetsSpreadsheetId,
+    systemConfig.lastGoogleSheetsBackupAt,
+    timesheets,
+    staff
+  ]);
+
+  // Fullscreen state & handler
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
+
+  const handleToggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        }
+      }
+    } catch (err) {
+      console.warn("Fullscreen toggle failed (e.g. within iframe):", err);
+    }
+  };
+
+  // PIN-Lock & RBAC security modal state
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [pinModalContext, setPinModalContext] = useState<{
+    title: string;
+    subtitle: string;
+    onSuccess: () => void;
+  } | null>(null);
+
+  const handleOpenPinModal = (options: { title: string; subtitle: string; onSuccess: () => void }) => {
+    setPinModalContext(options);
+    setIsPinModalOpen(true);
+  };
+
+  const handleRequestViewChange = (targetView: 'split' | 'kiosk' | 'admin') => {
+    // If kiosk is currently locked, leaving kiosk or opening admin requires PIN verification
+    if (systemConfig.kioskLocked && (viewMode === 'kiosk' || targetView === 'admin')) {
+      handleOpenPinModal({
+        title: 'Beveiligde Toegang (Admin)',
+        subtitle: 'Voer de 4-cijferige balie-pincode in om van weergave te wisselen of het beheerportaal te openen.',
+        onSuccess: () => {
+          setViewMode(targetView);
+        }
+      });
+      return;
+    }
+    setViewMode(targetView);
+  };
+
+  const handleKioskStaffUnlock = () => {
+    handleOpenPinModal({
+      title: 'Kiosk Ontgrendelen / Instellingen',
+      subtitle: 'Voer de 4-cijferige pincode in om de kiosk-vergrendeling in of uit te schakelen.',
+      onSuccess: () => {
+        const newLockState = !systemConfig.kioskLocked;
+        handleUpdateConfig({ kioskLocked: newLockState });
+      }
+    });
+  };
+
+  const handleLockAdmin = () => {
+    handleUpdateConfig({ kioskLocked: true });
+    setViewMode('kiosk');
+  };
 
   // Sync Patients
   useEffect(() => {
@@ -202,11 +335,51 @@ export default function App() {
   // Sync Timesheets
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'timesheets'), (snapshot) => {
-      const tsList: Timesheet[] = [];
+      const firestoreTs: Timesheet[] = [];
       snapshot.forEach((doc) => {
-        tsList.push(doc.data() as Timesheet);
+        firestoreTs.push(doc.data() as Timesheet);
       });
-      setTimesheets(tsList);
+
+      setTimesheets(prev => {
+        const map = new Map<string, Timesheet>();
+        // 1. Keep any existing entries in memory
+        prev.forEach(ts => { if (ts && ts.id) map.set(ts.id, ts); });
+        
+        // 2. Check localStorage backup
+        try {
+          const stored = localStorage.getItem('derm_timesheets_store');
+          if (stored) {
+            const list: Timesheet[] = JSON.parse(stored);
+            list.forEach(ts => { if (ts && ts.id) map.set(ts.id, ts); });
+          }
+        } catch (e) {
+          // ignore error
+        }
+
+        // 3. Overwrite / merge with live Firestore documents
+        firestoreTs.forEach(ts => { if (ts && ts.id) map.set(ts.id, ts); });
+
+        const merged = Array.from(map.values());
+        try {
+          localStorage.setItem('derm_timesheets_store', JSON.stringify(merged));
+        } catch (e) {
+          // ignore error
+        }
+
+        // 4. Auto-save any local records that weren't in Firestore yet
+        const remoteIds = new Set(firestoreTs.map(t => t.id));
+        merged.forEach(async (localTs) => {
+          if (!remoteIds.has(localTs.id)) {
+            try {
+              await setDoc(doc(db, 'timesheets', localTs.id), sanitizeForFirestore(localTs));
+            } catch (err) {
+              console.warn("Auto-syncing cached timesheet to Firestore:", err);
+            }
+          }
+        });
+
+        return merged;
+      });
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'timesheets');
     });
@@ -278,7 +451,8 @@ export default function App() {
     const dateStr = now.toISOString().split('T')[0];
 
     const doctor = doctors.find(d => d.id === newPatientData.doctorId);
-    const resolvedRoom = doctor ? doctor.waitingRoom : 'Gelijkvloers';
+    const isNurse = (doctor?.id === 'nurse-verpleegkundige') || (newPatientData.doctorName?.toLowerCase().includes('verpleegkundige'));
+    const resolvedRoom = isNurse ? 'Gelijkvloers' : (doctor ? doctor.waitingRoom : 'Gelijkvloers');
 
     const fullPatient: Patient = {
       ...newPatientData,
@@ -297,7 +471,7 @@ export default function App() {
   };
 
   // Dispatch MS Teams Notification & Save
-  const handleTeamsNotify = async (messageText: string, target?: string, payload?: any) => {
+  const handleTeamsNotify = async (messageText: string, target?: string, payload?: any): Promise<boolean> => {
     const now = new Date();
     const timeStr = now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     
@@ -305,6 +479,8 @@ export default function App() {
       id: `notif-${Date.now()}`,
       timestamp: timeStr,
       targetDoctor: target,
+      sender: payload?.sender || 'Kiosk Balie',
+      category: payload?.category || (payload?.type === 'Chatbericht' ? 'chat' : 'aanmelding'),
       payload,
       messagePreview: messageText,
       status: 'Simulated'
@@ -319,6 +495,8 @@ export default function App() {
       }
     }
 
+    let isSuccess = false;
+
     if (targetWebhookUrl && targetWebhookUrl.startsWith('http')) {
       try {
         const response = await fetch('/api/teams-notify', {
@@ -329,13 +507,14 @@ export default function App() {
           body: JSON.stringify({
             webhookUrl: targetWebhookUrl,
             messageText,
-            title: "Huidcentrum Gent - Kiosk Aanmelding",
+            title: payload?.title || (payload?.type === 'Chatbericht' ? "Huidcentrum Gent - Balie Teams Chat" : "Huidcentrum Gent - Kiosk Aanmelding"),
             payload
           })
         });
         
         if (response.ok) {
           newLogItem.status = 'Success';
+          isSuccess = true;
         } else {
           newLogItem.status = 'Failed';
           console.error("Teams proxy dispatch returned error status");
@@ -344,6 +523,9 @@ export default function App() {
         newLogItem.status = 'Failed';
         console.error("Teams webhook dispatch failed due to networking. Logged as failed.", err);
       }
+    } else {
+      // If no webhook URL configured, it is logged as Simulated in the logbook
+      isSuccess = true;
     }
 
     try {
@@ -351,6 +533,8 @@ export default function App() {
     } catch (err) {
       console.error("Error adding notification to firestore:", err);
     }
+
+    return isSuccess;
   };
 
   // Consistent system configuration updates (sync with Firestore and local State)
@@ -453,6 +637,19 @@ export default function App() {
   };
 
   const handleUpdateTimesheet = async (timesheet: Timesheet) => {
+    // 1. Instantly update local state and localStorage for zero-latency, unbreakable persistence
+    setTimesheets(prev => {
+      const next = prev.filter(t => t.id !== timesheet.id);
+      next.push(timesheet);
+      try {
+        localStorage.setItem('derm_timesheets_store', JSON.stringify(next));
+      } catch (e) {
+        // ignore error
+      }
+      return next;
+    });
+
+    // 2. Persist to Firestore database
     try {
       await setDoc(doc(db, 'timesheets', timesheet.id), sanitizeForFirestore(timesheet));
     } catch (err) {
@@ -461,6 +658,18 @@ export default function App() {
   };
 
   const handleDeleteTimesheet = async (id: string) => {
+    // 1. Instantly update local state and localStorage
+    setTimesheets(prev => {
+      const next = prev.filter(t => t.id !== id);
+      try {
+        localStorage.setItem('derm_timesheets_store', JSON.stringify(next));
+      } catch (e) {
+        // ignore error
+      }
+      return next;
+    });
+
+    // 2. Delete from Firestore database
     try {
       await deleteDoc(doc(db, 'timesheets', id));
     } catch (err) {
@@ -559,75 +768,48 @@ export default function App() {
     }
   };
 
-  if (viewMode === 'kiosk') {
-    return (
-      <div className="min-h-screen bg-[#FAF6F0] relative overflow-hidden w-screen h-screen" id="kiosk-fullscreen-root">
-        <KioskApp 
-          doctors={doctors}
-          onPatientRegister={handlePatientRegister}
-          onTeamsNotify={handleTeamsNotify}
-          isFullscreen={true}
-        />
-      </div>
-    );
-  }
-
-  if (viewMode === 'admin') {
-    return (
-      <div className="min-h-screen bg-slate-50 p-4 md:p-6" id="admin-fullscreen-root">
-        <div className="max-w-7xl mx-auto w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
-          <AdminDashboard 
-            patients={patients}
-            doctors={doctors}
-            activeStaffList={staff}
-            timesheets={timesheets}
-            systemConfig={systemConfig}
-            notifications={notifications}
-            onUpdateConfig={async (conf) => {
-              try {
-                await updateDoc(doc(db, 'config', 'system'), conf);
-              } catch (err) {
-                console.error("Error updating system config in firestore:", err);
-              }
-            }}
-            onUpdateDoctors={handleUpdateDoctors}
-            onUpdateStaff={handleUpdateStaff}
-            onUpdatePatientStatus={handleUpdatePatientStatus}
-            onResetDagdeel={handleResetDagdeel}
-            onClearNotificationLog={handleClearNotifications}
-            onAddSimulatedPatient={handleAddRandomSimulatedPatient}
-            onUpdateTimesheet={handleUpdateTimesheet}
-            onDeleteTimesheet={handleDeleteTimesheet}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans flex flex-col justify-between" id="applet-root">
+    <div className="min-h-screen bg-[#0d1117] text-slate-100 font-sans flex flex-col justify-between selection:bg-[#0071E3] selection:text-white relative overflow-x-hidden" id="applet-root">
       
-      {/* GLOBAL SIMULATION BAR - TOP HEADER */}
+      {/* Dynamic Apple Ambient Glow Orbs in Background */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/15 rounded-full blur-[120px]"></div>
+        <div className="absolute top-1/3 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-[140px]"></div>
+        <div className="absolute -bottom-40 left-1/3 w-96 h-96 bg-sky-500/10 rounded-full blur-[130px]"></div>
+      </div>
+
+      {/* GLOBAL SIMULATION BAR - APPLE GLASS TOP HEADER */}
       {!isLocked && (
-        <header className="bg-slate-950 border-b border-slate-800 px-6 py-3 flex flex-col md:flex-row justify-between items-center gap-3">
-          <div className="flex items-center gap-3">
-            <div className="bg-[#FAF6F0] p-1.5 rounded-xl border border-[#EDDFD0] shadow-sm shrink-0">
-              <HeartPulse className="h-6 w-6 text-[#D98C82]" />
+        <header className="relative z-10 apple-glass-dark border-b border-white/10 px-6 py-3.5 flex flex-col md:flex-row justify-between items-center gap-3.5 sticky top-0 shadow-2xl">
+          <div className="flex items-center gap-3.5">
+            <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-[#0071E3] to-[#42A5F5] p-0.5 shadow-lg shadow-blue-500/20 flex items-center justify-center shrink-0 border border-white/30">
+              <div className="h-full w-full bg-[#0d1117]/40 rounded-[14px] flex items-center justify-center backdrop-blur-xs">
+                <HeartPulse className="h-5 w-5 text-white" />
+              </div>
             </div>
             <div>
-              <span className="text-xs uppercase tracking-wider font-mono text-indigo-400 font-bold">Concept Demonstration &bull; UX/UI</span>
-              <h1 className="text-base sm:text-lg font-serif font-bold text-white tracking-tight flex items-center gap-2">
-                Dermatologie Digitaal Ontvangstsysteem
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] tracking-wider uppercase font-semibold text-sky-400 bg-sky-500/15 border border-sky-400/20 px-2 py-0.5 rounded-full">
+                  Clinical Suite
+                </span>
+                <span className="text-xs text-white/40 font-mono">v2.4</span>
+              </div>
+              <h1 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                Huidcentrum Gent <span className="text-white/40 font-normal text-xs sm:text-sm">| Digitaal Ontvangstsysteem</span>
               </h1>
             </div>
           </div>
 
-          {/* View Mode toggles */}
-          <div className="bg-slate-900 border border-slate-800 p-1 rounded-xl flex items-center gap-1">
+          {/* View Mode toggles - Apple Segmented Control Style */}
+          <div className="bg-black/40 border border-white/10 p-1 rounded-2xl flex items-center gap-1 backdrop-blur-xl shadow-inner">
             <button
               id="view-toggle-split"
-              onClick={() => setViewMode('split')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${viewMode === 'split' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              onClick={() => handleRequestViewChange('split')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                viewMode === 'split' 
+                  ? 'bg-white/15 text-white shadow-sm border border-white/20 backdrop-blur-md' 
+                  : 'text-white/60 hover:text-white hover:bg-white/5'
+              }`}
             >
               <LayoutGrid className="h-3.5 w-3.5" />
               Dual-View Simulator
@@ -635,29 +817,43 @@ export default function App() {
             
             <button
               id="view-toggle-kiosk"
-              onClick={() => setViewMode('kiosk')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${viewMode === 'kiosk' ? 'bg-[#D98C82] text-white' : 'text-slate-400 hover:text-white'}`}
+              onClick={() => handleRequestViewChange('kiosk')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                viewMode === 'kiosk' 
+                  ? 'bg-[#0071E3] text-white shadow-md shadow-blue-500/30 border border-blue-400/30' 
+                  : 'text-white/60 hover:text-white hover:bg-white/5'
+              }`}
             >
               <Tablet className="h-3.5 w-3.5" />
-              Alleen Kiosk (Patiënt)
+              <span>Alleen Kiosk</span>
+              {systemConfig.kioskLocked && (
+                <Lock className="h-3 w-3 text-amber-300 ml-0.5" />
+              )}
             </button>
 
             <button
               id="view-toggle-admin"
-              onClick={() => setViewMode('admin')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${viewMode === 'admin' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              onClick={() => handleRequestViewChange('admin')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                viewMode === 'admin' 
+                  ? 'bg-[#0071E3] text-white shadow-md shadow-blue-500/30 border border-blue-400/30' 
+                  : 'text-white/60 hover:text-white hover:bg-white/5'
+              }`}
             >
               <Monitor className="h-3.5 w-3.5" />
-              Alleen Admin (Arts/Balie)
+              <span>Secretariaat Admin</span>
+              {systemConfig.kioskLocked && (
+                <span className="text-[10px] px-1 py-0.2 rounded bg-amber-400/20 text-amber-300 font-mono">PIN</span>
+              )}
             </button>
           </div>
 
           {/* Diagnostic Actions */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <button
               onClick={handleResetEntireData}
               title="Reset alle gegevens naar standaard"
-              className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-red-400 rounded-xl transition cursor-pointer text-xs flex items-center gap-1"
+              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white/70 hover:text-red-400 rounded-xl transition duration-200 cursor-pointer text-xs flex items-center gap-1.5 backdrop-blur-md"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               Reset Data
@@ -667,43 +863,52 @@ export default function App() {
       )}
 
       {/* CORE WORKSPACE CONTENT PANEL */}
-      <main className="flex-1 p-4 md:p-6 max-w-[1550px] mx-auto w-full flex flex-col justify-center">
+      <main className="relative z-10 flex-1 p-4 md:p-6 max-w-[1550px] mx-auto w-full flex flex-col justify-center">
         
         {/* VIEW 1: DUAL-VIEW SPLIT LIVE SYNC SIMULATION */}
         {viewMode === 'split' && (
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch w-full">
             
-            {/* LEFT 5 COLUMNS: THE TABLET KIOSK WRAPPED IN BEAUTIFUL IPAD HARDWARE MOCKUP */}
+            {/* LEFT 5 COLUMNS: THE TABLET KIOSK WRAPPED IN SLEEK APPLE IPAD BEZEL */}
             <div className="md:col-span-5 flex flex-col justify-center items-center">
               
               {/* Device Header label */}
-              <div className="text-center font-mono text-[11px] text-slate-400 mb-2.5 flex items-center gap-2">
-                <Tablet className="h-4.5 w-4.5 text-[#D98C82]" />
-                LOKALE TABLET (Huidcentrum Gent &bull; RECEPTIE KIOSK)
+              <div className="text-center font-mono text-[11px] text-sky-400/80 mb-2.5 flex items-center gap-2 tracking-wide font-medium">
+                <Tablet className="h-4 w-4 text-sky-400" />
+                WACHTKAMER TABLET (PATIËNTEN INTERFACE)
               </div>
 
-              {/* Landscape IPad hardware framing shell */}
-              <div className="relative w-full max-w-[620px] bg-slate-950 p-4 sm:p-5 rounded-[28px] border-[5px] border-slate-800 shadow-2xl flex flex-col justify-center">
+              {/* Landscape IPad hardware framing shell with sleek Apple aluminum & dark glass bezel */}
+              <div className="relative w-full max-w-[620px] bg-gradient-to-b from-[#1c222d] to-[#0e1218] p-4 sm:p-5 rounded-[36px] border border-white/15 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.7)] flex flex-col justify-center ring-1 ring-black/80">
                 
-                {/* Screen top camera lens cutout */}
-                <span className="absolute left-1/2 -translate-x-1/2 top-2 h-2 w-2 rounded-full bg-slate-900 border border-slate-800"></span>
+                {/* Sleek metallic outer rim highlight */}
+                <div className="absolute inset-0 rounded-[36px] pointer-events-none border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)]"></div>
+
+                {/* Front camera lens cutout with sensor glare */}
+                <div className="absolute left-1/2 -translate-x-1/2 top-2.5 h-2 w-2 rounded-full bg-black border border-white/20 flex items-center justify-center">
+                  <span className="h-0.5 w-0.5 rounded-full bg-blue-500/60"></span>
+                </div>
 
                 {/* Patient terminal component wrapper */}
-                <div className="w-full bg-[#FAF6F0] rounded-xl overflow-hidden border border-slate-900">
+                <div className="w-full bg-[#f6f8fb] rounded-2xl overflow-hidden shadow-2xl border border-white/60">
                   <KioskApp 
                     doctors={doctors}
                     onPatientRegister={handlePatientRegister}
                     onTeamsNotify={handleTeamsNotify}
+                    isKioskLocked={systemConfig.kioskLocked ?? false}
+                    onRequestStaffUnlock={handleKioskStaffUnlock}
+                    onToggleFullscreen={handleToggleFullscreen}
+                    isFullscreen={isFullscreen}
                   />
                 </div>
 
-                {/* Device bottom software bar */}
-                <div className="mt-3.5 flex justify-center items-center h-1 bg-slate-800 w-28 rounded-full mx-auto"></div>
+                {/* Device bottom software home indicator bar */}
+                <div className="mt-3.5 flex justify-center items-center h-1 bg-white/20 w-28 rounded-full mx-auto"></div>
               </div>
 
               <div className="mt-4 text-center max-w-sm">
-                <p className="text-slate-400 text-xs">
-                  💡 <strong>Interactiviteitstip:</strong> Registreer links een patiënt en zie deze <strong>realtime</strong> rechts verschijnen in de tabel van de arts!
+                <p className="text-white/40 text-xs">
+                  💡 <strong>Live Synchronisatie:</strong> Registreer links een patiënt en zie deze direct rechts realtime verschijnen in het secretariaatsportaal.
                 </p>
               </div>
             </div>
@@ -711,12 +916,12 @@ export default function App() {
             {/* RIGHT 7 COLUMNS: ENTIRE WEB-BASED ADMINISTRATION PANEL */}
             <div className="md:col-span-7 flex flex-col justify-stretch overflow-hidden">
               {/* Web Browser indicator */}
-              <div className="text-center md:text-left font-mono text-[11px] text-indigo-400 mb-2.5 flex items-center justify-center md:justify-start gap-2">
-                <Monitor className="h-4.5 w-4.5" />
-                SECRETARIAAT BROWSER (DERMATOLOGO-ADMIN SERVICES)
+              <div className="text-center md:text-left font-mono text-[11px] text-sky-400/80 mb-2.5 flex items-center justify-center md:justify-start gap-2 tracking-wide font-medium">
+                <Monitor className="h-4 w-4" />
+                SECRETARIAAT BROWSER (ARTSEN & BALIE)
               </div>
 
-              <div className="flex-1 bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+              <div className="flex-1 apple-glass rounded-3xl shadow-2xl overflow-hidden border border-white/20">
                 <AdminDashboard 
                   patients={patients}
                   doctors={doctors}
@@ -733,6 +938,9 @@ export default function App() {
                   onAddSimulatedPatient={handleAddRandomSimulatedPatient}
                   onUpdateTimesheet={handleUpdateTimesheet}
                   onDeleteTimesheet={handleDeleteTimesheet}
+                  onLockAdmin={handleLockAdmin}
+                  onRunGdprAnonymize={() => executeGdprAnonymization(systemConfig.gdprRetentionHours || 24)}
+                  onTeamsNotify={handleTeamsNotify}
                 />
               </div>
             </div>
@@ -743,23 +951,29 @@ export default function App() {
         {/* VIEW 2: FULLSCREEN TABLET TERMINAL */}
         {viewMode === 'kiosk' && (
           <div className="max-w-[760px] mx-auto w-full py-4 flex flex-col items-center">
-            <div className="text-center font-serif text-sm text-slate-400 mb-3.5 flex items-center gap-1.5">
-              <Tablet className="h-4.5 w-4.5 text-[#D98C82] animate-pulse" />
-              UITVERGROTE TABLET WEERGAVE &bull; LANDSCAPE
+            <div className="text-center font-mono text-xs text-sky-400/80 mb-3 flex items-center gap-1.5 tracking-wider">
+              <Tablet className="h-4 w-4 text-sky-400" />
+              TABLET WAITING ROOM KIOSK &bull; LANDSCAPE
             </div>
 
-            <div className="w-full bg-slate-950 p-6 rounded-[32px] border-[6px] border-slate-800 shadow-2xl">
-              <div className="bg-[#FAF6F0] rounded-xl overflow-hidden border border-slate-900">
+            <div className="w-full bg-gradient-to-b from-[#1c222d] to-[#0e1218] p-6 rounded-[40px] border border-white/15 shadow-[0_30px_70px_-10px_rgba(0,0,0,0.8)] relative">
+              <div className="absolute left-1/2 -translate-x-1/2 top-3 h-2 w-2 rounded-full bg-black border border-white/20"></div>
+              <div className="bg-[#f6f8fb] rounded-2xl overflow-hidden shadow-2xl border border-white/60">
                 <KioskApp 
                   doctors={doctors}
                   onPatientRegister={handlePatientRegister}
                   onTeamsNotify={handleTeamsNotify}
+                  isKioskLocked={systemConfig.kioskLocked ?? false}
+                  onRequestStaffUnlock={handleKioskStaffUnlock}
+                  onToggleFullscreen={handleToggleFullscreen}
+                  isFullscreen={isFullscreen}
                 />
               </div>
+              <div className="mt-4 flex justify-center items-center h-1 bg-white/20 w-32 rounded-full mx-auto"></div>
             </div>
             
-            <p className="text-xs text-slate-400 mt-4 text-center max-w-md">
-              Dit is het ware scherm dat patiënten in de wachtkamer zien op de fysiek geplaatste tablet. Verander rechtsonder de taal om het direct in het NL, EN, FR, TR of AR te bekijken!
+            <p className="text-xs text-white/40 mt-4 text-center max-w-md">
+              Dit is het ware scherm dat patiënten in de wachtkamer zien op de tablet. Wissel rechtsonder van taal om direct te testen in NL, EN, FR, TR of AR.
             </p>
           </div>
         )}
@@ -767,7 +981,7 @@ export default function App() {
         {/* VIEW 3: FULLSCREEN WEB RECEPTION SYSTEM */}
         {viewMode === 'admin' && (
           <div className="w-full max-w-6xl mx-auto py-2">
-            <div className="bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-300">
+            <div className="apple-glass rounded-3xl shadow-2xl overflow-hidden border border-white/20">
               <AdminDashboard 
                 patients={patients}
                 doctors={doctors}
@@ -776,14 +990,17 @@ export default function App() {
                 systemConfig={systemConfig}
                 notifications={notifications}
                 onUpdateConfig={handleUpdateConfig}
-                onUpdateDoctors={setDoctors}
-                onUpdateStaff={setStaff}
+                onUpdateDoctors={handleUpdateDoctors}
+                onUpdateStaff={handleUpdateStaff}
                 onUpdatePatientStatus={handleUpdatePatientStatus}
                 onResetDagdeel={handleResetDagdeel}
                 onClearNotificationLog={handleClearNotifications}
                 onAddSimulatedPatient={handleAddRandomSimulatedPatient}
                 onUpdateTimesheet={handleUpdateTimesheet}
                 onDeleteTimesheet={handleDeleteTimesheet}
+                onLockAdmin={handleLockAdmin}
+                onRunGdprAnonymize={() => executeGdprAnonymization(systemConfig.gdprRetentionHours || 24)}
+                onTeamsNotify={handleTeamsNotify}
               />
             </div>
           </div>
@@ -792,21 +1009,39 @@ export default function App() {
       </main>
 
       {/* FOOTER INFORMATIONAL CREDITS */}
-      <footer className="bg-slate-950 border-t border-slate-800 py-3.5 px-6 text-center text-[11px] text-slate-500 shrink-0">
+      <footer className="relative z-10 apple-glass-dark border-t border-white/10 py-3.5 px-6 text-center text-[11px] text-white/40 shrink-0">
         <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-2">
-          <span>&copy; 2026 DermatoMed &bull; Privacy-first Reception Suite</span>
+          <span>&copy; 2026 Huidcentrum Gent &bull; Apple Glass Medical Edition</span>
           <div className="flex gap-4">
-            <span className="flex items-center gap-1">
-              <ClipboardList className="h-3 w-3 text-indigo-400" />
-              100% GDPR Conform
+            <span className="flex items-center gap-1.5 text-emerald-400/90 font-medium">
+              <ClipboardList className="h-3.5 w-3.5" />
+              100% AVG / GDPR Conform
             </span>
-            <span className="flex items-center gap-1">
-              <ShieldAlert className="h-3 w-3 text-amber-500" />
-              Patiënten-Database Versleuteld (AES-256)
+            <span className="flex items-center gap-1.5 text-sky-400/90 font-medium">
+              <ShieldAlert className="h-3.5 w-3.5" />
+              Versleutelde Database
             </span>
           </div>
         </div>
       </footer>
+
+      {/* PIN LOCK SECURITY MODAL */}
+      <PinLockModal
+        isOpen={isPinModalOpen}
+        expectedPin={systemConfig.adminPin || '1234'}
+        title={pinModalContext?.title || 'Balie Beveiliging'}
+        subtitle={pinModalContext?.subtitle || 'Voer de 4-cijferige pincode in om toegang te krijgen.'}
+        onSuccess={() => {
+          setIsPinModalOpen(false);
+          if (pinModalContext?.onSuccess) {
+            pinModalContext.onSuccess();
+          }
+        }}
+        onCancel={() => {
+          setIsPinModalOpen(false);
+          setPinModalContext(null);
+        }}
+      />
     </div>
   );
 }

@@ -2,44 +2,75 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Catch-all safety filter
+    // Catch-all safety filter: deny any unexpected collection
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Helper to validate basic ID string shapes
-    function isValidId(id) { 
-      return id is string && id.size() <= 128; 
+    // Helper functions for schema validation
+    function isValidString(val, maxLen) {
+      return val is string && val.size() > 0 && val.size() <= maxLen;
     }
 
-    // Patients collection - Kiosk needs to register, Admin needs to manage
+    // Patients collection - used by Reception Kiosk (registration) and Staff Dashboard
     match /patients/{patientId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update, delete: if true;
     }
 
-    // Doctors collection
+    // Doctors collection - clinic medical team roster & room assignments
     match /doctors/{doctorId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if true;
     }
 
-    // Staff collection
+    // Staff collection - clinic support team & status
     match /staff/{staffId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if true;
     }
 
-    // Config collection - single config doc
+    // Config collection - operational settings (dagdeel, active staff, webhook)
     match /config/{configId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if true;
     }
 
     // MS Teams Notifications audit trail
     match /notifications/{notificationId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Staff timesheets - clock-in / clock-out tracking
+    match /timesheets/{timesheetId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Leave Planning - Staff Members
+    match /leave_staff/{staffId} {
       allow read, write: if true;
     }
 <<<<<<< HEAD
 
-    // Staff timesheets
-    match /timesheets/{timesheetId} {
+    // Leave Planning - Leave Requests
+    match /leave_requests/{requestId} {
+      allow read, write: if true;
+    }
+
+    // Leave Planning - General Comments per week
+    match /leave_comments/{commentId} {
+      allow read, write: if true;
+    }
+
+    // Leave Planning - Coordinator Todos & Archive
+    match /leave_todos/{todoId} {
+      allow read, write: if true;
+    }
+
+    // Leave Planning - Config (Google Sheets settings, etc.)
+    match /leave_config/{configId} {
       allow read, write: if true;
     }
 =======

@@ -1,30 +1,121 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
-  --color-bg-medical: #FAF7F5;
-  --color-accent-peach: #F2E1E1;
-  --color-text-main: #4D443E;
-  --color-text-sub: #8C7E74;
-  --color-button-beige: #EBDDD6;
-  --color-button-active: #DBC7BD;
-  --color-border-soft: #F0E4DE;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Plus Jakarta Sans", "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
+  --color-bg-medical: #F7F9FC;
+  --color-accent-peach: #E9F1FE;
+  --color-text-main: #1D1D1F;
+  --color-text-sub: #86868B;
+  --color-button-beige: #EDF2F7;
+  --color-button-active: #0071E3;
+  --color-border-soft: rgba(0, 0, 0, 0.08);
 }
 
-/* Verwijder de standaard blauwe focusrand/outline van de browser voor alle elementen */
+/* Apple Liquid Glass Morphism Utilities */
+.apple-glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.06), 0 1px 1px 0 rgba(255, 255, 255, 0.8) inset;
+}
+
+.apple-glass-card {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.07), 0 1px 0 0 rgba(255, 255, 255, 0.9) inset;
+}
+
+.apple-glass-card-hover {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.apple-glass-card-hover:hover {
+  background: rgba(255, 255, 255, 0.92);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 36px -10px rgba(0, 113, 227, 0.12), 0 1px 0 0 rgba(255, 255, 255, 1) inset;
+  border-color: rgba(0, 113, 227, 0.3);
+}
+
+.apple-glass-card-active:active {
+  transform: scale(0.985);
+  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.05);
+}
+
+.apple-glass-dark {
+  background: rgba(20, 24, 35, 0.75);
+  backdrop-filter: blur(30px) saturate(190%);
+  -webkit-backdrop-filter: blur(30px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 16px 40px 0 rgba(0, 0, 0, 0.36);
+}
+
+.apple-glass-input {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.apple-glass-input:focus {
+  background: #ffffff;
+  border-color: #0071E3 !important;
+  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.15) !important;
+  outline: none !important;
+}
+
+/* Subtle Apple specular shine highlight */
+.apple-specular {
+  position: relative;
+  overflow: hidden;
+}
+
+.apple-specular::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -50%;
+  width: 200%;
+  height: 100%;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.25) 0%,
+    rgba(255, 255, 255, 0.05) 40%,
+    transparent 60%
+  );
+  pointer-events: none;
+}
+
+/* Removal of default outlines with precision Apple focus */
 *:focus,
 *:focus-visible {
   outline: none !important;
-  box-shadow: none !important;
 }
 
-/* Behoud een nette focusstijl voor input- en select-velden met eigen warm-beige themakleuren */
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: var(--color-button-active) !important;
+  border-color: #0071E3 !important;
   outline: none !important;
-  box-shadow: 0 0 0 2px rgba(219, 199, 189, 0.3) !important;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.18) !important;
 }
 
+/* Custom modern sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.28);
+}
