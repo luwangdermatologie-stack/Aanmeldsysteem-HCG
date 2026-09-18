@@ -54,3 +54,12 @@ export interface TeamsNotification {
   status: 'Success' | 'Failed' | 'Simulated';
   messagePreview: string;
 }
+
+export interface Timesheet {
+  id: string;
+  staffId: string;
+  staffName: string;
+  clockIn: string; // ISO date string
+  clockOut: string | null; // ISO date string or null
+  date: string; // YYYY-MM-DD
+}

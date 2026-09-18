@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification } from '../types';
+import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timesheet } from '../types';
 import { 
   Users, 
   Settings, 
@@ -20,13 +20,17 @@ import {
   TrendingUp, 
   HelpCircle,
   FolderSync,
-  CheckCircle
+  CheckCircle,
+  CalendarDays,
+  Plus,
+  Pencil
 } from 'lucide-react';
 
 interface AdminDashboardProps {
   patients: Patient[];
   doctors: Doctor[];
   activeStaffList: ActiveStaff[];
+  timesheets: Timesheet[];
   systemConfig: SystemConfig;
   notifications: TeamsNotification[];
   onUpdateConfig: (config: Partial<SystemConfig>) => void;
@@ -36,12 +40,15 @@ interface AdminDashboardProps {
   onResetDagdeel: (options: { clearPatients: boolean; reassignRooms: Record<string, 'Gelijkvloers' | 'Bovenverdieping'>; supportStaffId: string; nextPeriod: 'ochtend' | 'middag' }) => void;
   onClearNotificationLog: () => void;
   onAddSimulatedPatient: () => void;
+  onUpdateTimesheet: (timesheet: Timesheet) => void;
+  onDeleteTimesheet: (id: string) => void;
 }
 
 export default function AdminDashboard({
   patients,
   doctors,
   activeStaffList,
+  timesheets,
   systemConfig,
   notifications,
   onUpdateConfig,
@@ -50,10 +57,12 @@ export default function AdminDashboard({
   onUpdatePatientStatus,
   onResetDagdeel,
   onClearNotificationLog,
-  onAddSimulatedPatient
+  onAddSimulatedPatient,
+  onUpdateTimesheet,
+  onDeleteTimesheet
 }: AdminDashboardProps) {
   // Tabs and filters inside Admin
-  const [activeTab, setActiveTab] = useState<'overview' | 'config' | 'notifications'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'config' | 'notifications' | 'timesheets'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [doctorFilter, setDoctorFilter] = useState('all');
   const [roomFilter, setRoomFilter] = useState('all');
@@ -87,6 +96,16 @@ export default function AdminDashboard({
   const [tempDoctorRooms, setTempDoctorRooms] = useState<Record<string, 'Gelijkvloers' | 'Bovenverdieping'>>(
     doctors.reduce((acc, dr) => ({ ...acc, [dr.id]: dr.waitingRoom }), {})
   );
+
+  // Timesheets management
+  const [selectedTsMonth, setSelectedTsMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [selectedTsStaff, setSelectedTsStaff] = useState<string>('all');
+  const [isEditingTs, setIsEditingTs] = useState(false);
+  const [editingTsId, setEditingTsId] = useState<string>('');
+  const [editingTsStaff, setEditingTsStaff] = useState<string>('');
+  const [editingTsDate, setEditingTsDate] = useState<string>('');
+  const [editingTsIn, setEditingTsIn] = useState<string>('');
+  const [editingTsOut, setEditingTsOut] = useState<string>('');
 
   const [testState, setTestState] = React.useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
   const [testError, setTestError] = React.useState('');
@@ -334,7 +353,7 @@ export default function AdminDashboard({
     .filter(p => {
       const matchSearch = 
         `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        p.nationalRegistryNum.includes(searchTerm);
+        (p.nationalRegistryNum && p.nationalRegistryNum.includes(searchTerm));
       const matchDoc = doctorFilter === 'all' || p.doctorId === doctorFilter;
       const matchRoom = roomFilter === 'all' || p.waitingRoom === roomFilter;
       const matchStatus = statusFilter === 'all' || p.status === statusFilter;
@@ -346,8 +365,8 @@ export default function AdminDashboard({
       let valB = '';
       
       if (sortBy === 'arrivalTime') {
-        valA = a.arrivalTime;
-        valB = b.arrivalTime;
+        valA = a.arrivalTime || '';
+        valB = b.arrivalTime || '';
       } else {
         valA = a.appointmentTime || '99:99';
         valB = b.appointmentTime || '99:99';
@@ -370,6 +389,89 @@ export default function AdminDashboard({
   };
 
   const activeStaffName = activeStaffList.find(s => s.id === systemConfig.activeStaffId)?.name || 'Geen medewerker';
+
+  // Timesheets logic
+  const handleSaveTimesheet = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTsStaff || !editingTsDate || !editingTsIn) {
+      showToast("Vul minstens medewerker, datum en intiktijd in.", "warning");
+      return;
+    }
+    const staffMember = activeStaffList.find(s => s.id === editingTsStaff);
+    if (!staffMember) return;
+    
+    // Check if clockOut is valid
+    if (editingTsOut && editingTsOut < editingTsIn) {
+      showToast("Uittiktijd moet na intiktijd zijn.", "warning");
+      return;
+    }
+
+    onUpdateTimesheet({
+      id: editingTsId || `ts-${Date.now()}`,
+      staffId: editingTsStaff,
+      staffName: staffMember.name,
+      clockIn: new Date(`${editingTsDate}T${editingTsIn}`).toISOString(),
+      clockOut: editingTsOut ? new Date(`${editingTsDate}T${editingTsOut}`).toISOString() : null,
+      date: editingTsDate
+    });
+    setIsEditingTs(false);
+    showToast("Tiktijd succesvol opgeslagen.", "success");
+  };
+
+  const handleStartEditTs = (ts?: Timesheet) => {
+    if (ts) {
+      setEditingTsId(ts.id);
+      setEditingTsStaff(ts.staffId);
+      setEditingTsDate(ts.date);
+      const inDate = new Date(ts.clockIn);
+      setEditingTsIn(inDate.toTimeString().slice(0, 5));
+      if (ts.clockOut) {
+        const outDate = new Date(ts.clockOut);
+        setEditingTsOut(outDate.toTimeString().slice(0, 5));
+      } else {
+        setEditingTsOut('');
+      }
+    } else {
+      setEditingTsId('');
+      setEditingTsStaff(activeStaffList[0]?.id || '');
+      setEditingTsDate(new Date().toISOString().slice(0, 10));
+      setEditingTsIn(new Date().toTimeString().slice(0, 5));
+      setEditingTsOut('');
+    }
+    setIsEditingTs(true);
+  };
+
+  const handleClockAction = (staffId: string, isClockIn: boolean) => {
+    const staffMember = activeStaffList.find(s => s.id === staffId);
+    if (!staffMember) return;
+
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+
+    if (isClockIn) {
+      onUpdateTimesheet({
+        id: `ts-${Date.now()}`,
+        staffId,
+        staffName: staffMember.name,
+        clockIn: now.toISOString(),
+        clockOut: null,
+        date: dateStr
+      });
+      showToast(`${staffMember.name} is succesvol ingeklokt.`, "success");
+    } else {
+      // Find open timesheet for this staff member today
+      const openTs = timesheets.find(ts => ts.staffId === staffId && ts.date === dateStr && !ts.clockOut);
+      if (openTs) {
+        onUpdateTimesheet({
+          ...openTs,
+          clockOut: now.toISOString()
+        });
+        showToast(`${staffMember.name} is succesvol uitgeklokt.`, "success");
+      } else {
+        showToast(`Geen openstaande intik gevonden voor ${staffMember.name} vandaag.`, "warning");
+      }
+    }
+  };
 
   // Helper to mask Rijksregisternummer
   const formatRegistryNum = (num: string): string => {
@@ -571,6 +673,14 @@ export default function AdminDashboard({
                 {notifications.length}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('timesheets')}
+            className={`px-4 py-2 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${activeTab === 'timesheets' ? 'bg-bg-medical text-text-main font-bold' : 'text-text-sub hover:text-text-main'}`}
+          >
+            <Clock className="h-4 w-4 text-text-sub" />
+            Personeel Tiktijden
           </button>
         </div>
 
@@ -1279,6 +1389,194 @@ export default function AdminDashboard({
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* TAB 4: TIMESHEETS */}
+        {activeTab === 'timesheets' && (
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4 animate-fade-in">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2.5">
+              <div className="flex items-center gap-2">
+                <Clock className="h-5 w-5 text-indigo-500" />
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">Personeel Tiktijden</h3>
+                  <p className="text-xs text-slate-400">Intik- en uittik klok en maandelijks overzicht</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Left Column: Quick Actions */}
+              <div className="md:col-span-1 space-y-4">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <h4 className="font-bold text-sm text-slate-700 mb-3">Snel In/Uit Klokken</h4>
+                  <div className="flex flex-col gap-2">
+                    {activeStaffList.map(staff => {
+                      const todayStr = new Date().toISOString().slice(0, 10);
+                      const openTs = timesheets.find(ts => ts.staffId === staff.id && ts.date === todayStr && !ts.clockOut);
+                      return (
+                        <div key={staff.id} className="flex justify-between items-center p-2 bg-white rounded-lg border border-slate-100 shadow-sm text-xs">
+                          <span className="font-medium">{staff.name}</span>
+                          {openTs ? (
+                            <button onClick={() => handleClockAction(staff.id, false)} className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded-md transition cursor-pointer">
+                              Tik uit
+                            </button>
+                          ) : (
+                            <button onClick={() => handleClockAction(staff.id, true)} className="px-3 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 font-bold rounded-md transition cursor-pointer">
+                              Tik in
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {isEditingTs ? (
+                  <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-200 space-y-3">
+                    <h4 className="font-bold text-sm text-indigo-800">{editingTsId ? 'Bewerk Tiktijd' : 'Voeg Tiktijd Toe'}</h4>
+                    <form onSubmit={handleSaveTimesheet} className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-indigo-600">Medewerker *</label>
+                        <select className="w-full text-xs p-1.5 rounded-lg border border-indigo-300" value={editingTsStaff} onChange={e => setEditingTsStaff(e.target.value)} required>
+                          <option value="">Selecteer medewerker</option>
+                          {activeStaffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-indigo-600">Datum *</label>
+                        <input type="date" className="w-full text-xs p-1.5 rounded-lg border border-indigo-300" value={editingTsDate} onChange={e => setEditingTsDate(e.target.value)} required />
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="flex-1 space-y-1">
+                          <label className="text-[10px] font-bold text-indigo-600">Tik in *</label>
+                          <input type="time" className="w-full text-xs p-1.5 rounded-lg border border-indigo-300" value={editingTsIn} onChange={e => setEditingTsIn(e.target.value)} required />
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <label className="text-[10px] font-bold text-indigo-600">Tik uit</label>
+                          <input type="time" className="w-full text-xs p-1.5 rounded-lg border border-indigo-300" value={editingTsOut} onChange={e => setEditingTsOut(e.target.value)} />
+                        </div>
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <button type="submit" className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs cursor-pointer">Opslaan</button>
+                        <button type="button" onClick={() => setIsEditingTs(false)} className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-600 font-bold rounded-lg text-xs border border-slate-300 cursor-pointer">Annuleren</button>
+                      </div>
+                    </form>
+                  </div>
+                ) : (
+                  <button onClick={() => handleStartEditTs()} className="w-full py-2.5 border-2 border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 font-bold rounded-xl text-xs transition flex justify-center items-center gap-1 cursor-pointer">
+                    <Plus className="h-4 w-4" /> Manuele tiktijd toevoegen
+                  </button>
+                )}
+              </div>
+
+              {/* Right Column: Monthly Overview */}
+              <div className="md:col-span-2 space-y-4">
+                <div className="flex items-center justify-between gap-4 flex-wrap bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 text-xs">
+                      <label className="font-bold text-slate-600">Maand:</label>
+                      <input type="month" value={selectedTsMonth} onChange={e => setSelectedTsMonth(e.target.value)} className="p-1 rounded border border-slate-300" />
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <label className="font-bold text-slate-600">Medewerker:</label>
+                      <select value={selectedTsStaff} onChange={e => setSelectedTsStaff(e.target.value)} className="p-1 rounded border border-slate-300 max-w-[150px]">
+                        <option value="all">Iedereen</option>
+                        {activeStaffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto border border-slate-200 rounded-xl max-h-[400px] overflow-y-auto">
+                  <table className="w-full text-left text-xs whitespace-nowrap">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 sticky top-0">
+                      <tr>
+                        <th className="p-3 font-bold">Datum</th>
+                        <th className="p-3 font-bold">Medewerker</th>
+                        <th className="p-3 font-bold">In</th>
+                        <th className="p-3 font-bold">Uit</th>
+                        <th className="p-3 font-bold">Duur</th>
+                        <th className="p-3 font-bold text-right">Acties</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(() => {
+                        const filteredTs = timesheets.filter(ts => {
+                          if (selectedTsStaff !== 'all' && ts.staffId !== selectedTsStaff) return false;
+                          return ts.date.startsWith(selectedTsMonth);
+                        }).sort((a, b) => {
+                          const dateA = a.date || '';
+                          const dateB = b.date || '';
+                          if (dateA !== dateB) return dateB.localeCompare(dateA);
+                          const clockInA = a.clockIn || '';
+                          const clockInB = b.clockIn || '';
+                          return clockInB.localeCompare(clockInA);
+                        });
+
+                        let totalMinutes = 0;
+
+                        if (filteredTs.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={6} className="p-6 text-center text-slate-400">
+                                Geen tiktijden gevonden voor deze selectie.
+                              </td>
+                            </tr>
+                          )
+                        }
+
+                        return (
+                          <>
+                            {filteredTs.map(ts => {
+                              let durStr = '-';
+                              if (ts.clockOut) {
+                                const inTime = new Date(ts.clockIn).getTime();
+                                const outTime = new Date(ts.clockOut).getTime();
+                                const diffMin = Math.floor((outTime - inTime) / 60000);
+                                totalMinutes += diffMin;
+                                const h = Math.floor(diffMin / 60);
+                                const m = diffMin % 60;
+                                durStr = `${h}u ${m}m`;
+                              }
+
+                              const inDate = new Date(ts.clockIn);
+                              const outDate = ts.clockOut ? new Date(ts.clockOut) : null;
+
+                              return (
+                                <tr key={ts.id} className="hover:bg-slate-50 transition">
+                                  <td className="p-3 font-medium text-slate-800">{ts.date}</td>
+                                  <td className="p-3 text-slate-600">{ts.staffName}</td>
+                                  <td className="p-3 text-slate-600 font-mono">{inDate.toTimeString().slice(0, 5)}</td>
+                                  <td className="p-3 text-slate-600 font-mono">
+                                    {outDate ? outDate.toTimeString().slice(0, 5) : <span className="text-emerald-600 text-[10px] bg-emerald-50 px-1 rounded font-bold">Nog ingeklokt</span>}
+                                  </td>
+                                  <td className="p-3 font-bold text-indigo-700">{durStr}</td>
+                                  <td className="p-3 text-right space-x-2">
+                                    <button onClick={() => handleStartEditTs(ts)} className="text-slate-400 hover:text-indigo-600 transition cursor-pointer" title="Bewerk">
+                                      <Pencil className="h-3.5 w-3.5 inline" />
+                                    </button>
+                                    <button onClick={() => { if(confirm('Tiktijd verwijderen?')) onDeleteTimesheet(ts.id); }} className="text-slate-400 hover:text-red-500 transition cursor-pointer" title="Verwijder">
+                                      <Trash2 className="h-3.5 w-3.5 inline" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                            <tr className="bg-indigo-50 font-bold border-t-2 border-indigo-200">
+                              <td colSpan={4} className="p-3 text-right text-indigo-900">Totaal deze selectie:</td>
+                              <td colSpan={2} className="p-3 text-indigo-900 text-sm">
+                                {Math.floor(totalMinutes / 60)}u {totalMinutes % 60}m
+                              </td>
+                            </tr>
+                          </>
+                        )
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

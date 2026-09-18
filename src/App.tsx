@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification } from './types';
+import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timesheet } from './types';
 import KioskApp from './components/KioskApp';
 import AdminDashboard from './components/AdminDashboard';
 import { 
@@ -21,7 +21,7 @@ import {
   HeartPulse
 } from 'lucide-react';
 import { db, initializeDatabaseIfEmpty, handleFirestoreError, OperationType, sanitizeForFirestore } from './firebase';
-import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, getDocs } from 'firebase/firestore';
 
 const INITIAL_DOCTORS: Doctor[] = [
   { id: 'dr-mertens', name: 'Dr. Elisabeth Mertens', specialty: 'Algemene Dermatologie', waitingRoom: 'Gelijkvloers', isAvailable: true, avatarColor: 'bg-teal-500' },
@@ -91,7 +91,23 @@ const PRELOADED_PATIENTS: Patient[] = [
 ];
 
 export default function App() {
-  const [viewMode, setViewMode] = useState<'split' | 'kiosk' | 'admin'>('split');
+  const [viewMode, setViewMode] = useState<'split' | 'kiosk' | 'admin'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    if (view === 'kiosk' || view === 'admin' || view === 'split') {
+      return view;
+    }
+    
+    try {
+      const stored = localStorage.getItem('derm_reception_viewmode');
+      if (stored === 'kiosk' || stored === 'admin' || stored === 'split') {
+        return stored;
+      }
+    } catch (e) {
+      console.warn("localStorage not accessible", e);
+    }
+    return 'split';
+  });
 
   const [isLocked] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -100,13 +116,18 @@ export default function App() {
 
   // Persist viewMode
   useEffect(() => {
-    localStorage.setItem('derm_reception_viewmode', viewMode);
+    try {
+      localStorage.setItem('derm_reception_viewmode', viewMode);
+    } catch (e) {
+      // Ignore
+    }
   }, [viewMode]);
   
   // State synchronized with Firebase Firestore
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [staff, setStaff] = useState<ActiveStaff[]>([]);
+  const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [systemConfig, setSystemConfig] = useState<SystemConfig>({
     currentDagdeel: 'ochtend',
     activeStaffId: 'staff-karina',
@@ -117,6 +138,49 @@ export default function App() {
   // Initialize DB once on mount
   useEffect(() => {
     initializeDatabaseIfEmpty();
+  }, []);
+
+  // Daily patient cleanup (Midnight GMT+1)
+  useEffect(() => {
+    const checkAndClearDaily = async () => {
+      const now = new Date();
+      // GMT+1 is UTC+1. Add 1 hour to current time to get the GMT+1 time
+      const gmt1Date = new Date(now.getTime() + 1 * 60 * 60 * 1000);
+      const gmt1DateStr = gmt1Date.toISOString().slice(0, 10);
+      const gmt1Hour = gmt1Date.getUTCHours();
+      
+      let lastClearStr = null;
+      try {
+        lastClearStr = localStorage.getItem('last_clear_date_gmt1');
+      } catch (e) {
+        // Ignore
+      }
+
+      // If it's 00:xx in GMT+1, and we haven't cleared today
+      if (gmt1Hour === 0 && lastClearStr !== gmt1DateStr) {
+        try {
+          const snapshot = await getDocs(collection(db, 'patients'));
+          if (!snapshot.empty) {
+            const batch = writeBatch(db);
+            snapshot.forEach(doc => {
+              batch.delete(doc.ref);
+            });
+            await batch.commit();
+          }
+          try {
+            localStorage.setItem('last_clear_date_gmt1', gmt1DateStr);
+          } catch (e) {}
+          console.log("Daily patient cleanup completed (GMT+1 Midnight).");
+        } catch (err) {
+          console.error("Daily patient cleanup failed:", err);
+        }
+      }
+    };
+
+    // Check once on mount, then every 5 minutes
+    checkAndClearDaily();
+    const interval = setInterval(checkAndClearDaily, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   // Sync Patients
@@ -131,6 +195,20 @@ export default function App() {
       setPatients(patientList);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'patients');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync Timesheets
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'timesheets'), (snapshot) => {
+      const tsList: Timesheet[] = [];
+      snapshot.forEach((doc) => {
+        tsList.push(doc.data() as Timesheet);
+      });
+      setTimesheets(tsList);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'timesheets');
     });
     return () => unsubscribe();
   }, []);
@@ -374,6 +452,22 @@ export default function App() {
     }
   };
 
+  const handleUpdateTimesheet = async (timesheet: Timesheet) => {
+    try {
+      await setDoc(doc(db, 'timesheets', timesheet.id), sanitizeForFirestore(timesheet));
+    } catch (err) {
+      console.error("Error updating timesheet in firestore:", err);
+    }
+  };
+
+  const handleDeleteTimesheet = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'timesheets', id));
+    } catch (err) {
+      console.error("Error deleting timesheet in firestore:", err);
+    }
+  };
+
   const handleResetEntireData = async () => {
     if (confirm("🚨 Dit zal alle opgeslagen cliënten en instellingen volledig terugzetten naar de fabrieksinstellingen. Doorgaan?")) {
       try {
@@ -486,6 +580,7 @@ export default function App() {
             patients={patients}
             doctors={doctors}
             activeStaffList={staff}
+            timesheets={timesheets}
             systemConfig={systemConfig}
             notifications={notifications}
             onUpdateConfig={async (conf) => {
@@ -501,6 +596,8 @@ export default function App() {
             onResetDagdeel={handleResetDagdeel}
             onClearNotificationLog={handleClearNotifications}
             onAddSimulatedPatient={handleAddRandomSimulatedPatient}
+            onUpdateTimesheet={handleUpdateTimesheet}
+            onDeleteTimesheet={handleDeleteTimesheet}
           />
         </div>
       </div>
@@ -574,10 +671,10 @@ export default function App() {
         
         {/* VIEW 1: DUAL-VIEW SPLIT LIVE SYNC SIMULATION */}
         {viewMode === 'split' && (
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch w-full">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch w-full">
             
             {/* LEFT 5 COLUMNS: THE TABLET KIOSK WRAPPED IN BEAUTIFUL IPAD HARDWARE MOCKUP */}
-            <div className="xl:col-span-12 xl:col-span-5 flex flex-col justify-center items-center">
+            <div className="md:col-span-5 flex flex-col justify-center items-center">
               
               {/* Device Header label */}
               <div className="text-center font-mono text-[11px] text-slate-400 mb-2.5 flex items-center gap-2">
@@ -612,9 +709,9 @@ export default function App() {
             </div>
 
             {/* RIGHT 7 COLUMNS: ENTIRE WEB-BASED ADMINISTRATION PANEL */}
-            <div className="xl:col-span-12 xl:col-span-7 flex flex-col justify-stretch">
+            <div className="md:col-span-7 flex flex-col justify-stretch overflow-hidden">
               {/* Web Browser indicator */}
-              <div className="text-center xl:text-left font-mono text-[11px] text-indigo-400 mb-2.5 flex items-center justify-center xl:justify-start gap-2">
+              <div className="text-center md:text-left font-mono text-[11px] text-indigo-400 mb-2.5 flex items-center justify-center md:justify-start gap-2">
                 <Monitor className="h-4.5 w-4.5" />
                 SECRETARIAAT BROWSER (DERMATOLOGO-ADMIN SERVICES)
               </div>
@@ -624,6 +721,7 @@ export default function App() {
                   patients={patients}
                   doctors={doctors}
                   activeStaffList={staff}
+                  timesheets={timesheets}
                   systemConfig={systemConfig}
                   notifications={notifications}
                   onUpdateConfig={handleUpdateConfig}
@@ -633,6 +731,8 @@ export default function App() {
                   onResetDagdeel={handleResetDagdeel}
                   onClearNotificationLog={handleClearNotifications}
                   onAddSimulatedPatient={handleAddRandomSimulatedPatient}
+                  onUpdateTimesheet={handleUpdateTimesheet}
+                  onDeleteTimesheet={handleDeleteTimesheet}
                 />
               </div>
             </div>
@@ -672,6 +772,7 @@ export default function App() {
                 patients={patients}
                 doctors={doctors}
                 activeStaffList={staff}
+                timesheets={timesheets}
                 systemConfig={systemConfig}
                 notifications={notifications}
                 onUpdateConfig={handleUpdateConfig}
@@ -681,6 +782,8 @@ export default function App() {
                 onResetDagdeel={handleResetDagdeel}
                 onClearNotificationLog={handleClearNotifications}
                 onAddSimulatedPatient={handleAddRandomSimulatedPatient}
+                onUpdateTimesheet={handleUpdateTimesheet}
+                onDeleteTimesheet={handleDeleteTimesheet}
               />
             </div>
           </div>
