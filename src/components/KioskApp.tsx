@@ -37,6 +37,7 @@ interface KioskAppProps {
   onRequestStaffUnlock?: () => void;
   onToggleFullscreen?: () => void;
   onOpenAdmin?: () => void;
+  onOpenAdminWithPin?: () => void;
   onOpenSplit?: () => void;
 }
 
@@ -54,6 +55,7 @@ export default function KioskApp({
   onRequestStaffUnlock,
   onToggleFullscreen,
   onOpenAdmin,
+  onOpenAdminWithPin,
   onOpenSplit
 }: KioskAppProps) {
   const [lang, setLang] = useState<LanguageCode>('NL');
@@ -776,28 +778,7 @@ export default function KioskApp({
       dir={isCurrentRtl ? 'rtl' : 'ltr'}
     >
       {/* High-End Clinic Brand Header Decorator - Apple Glass Bar */}
-      <div className="flex justify-between items-center border-b border-black/5 pb-3 mb-2">
-        <div className="flex items-center gap-2.5">
-          <div className="h-2.5 w-2.5 rounded-full bg-[#0071E3] shadow-sm shadow-blue-500/50 animate-pulse"></div>
-          <button
-            type="button"
-            onClick={onOpenAdmin || onRequestStaffUnlock}
-            className="font-sans font-bold tracking-tight text-slate-800 text-sm sm:text-base flex items-center gap-1.5 hover:text-[#0071E3] transition text-left cursor-pointer"
-            title="Klik voor balie-/secretariaatsbeheer"
-          >
-            Huidcentrum Gent
-          </button>
-          {isKioskLocked && (
-            <button
-              onClick={onRequestStaffUnlock}
-              className="ml-2 flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-500/30 rounded-full text-[11px] font-semibold transition cursor-pointer backdrop-blur-xs"
-              title="Kiosk is vergrendeld voor patiënten. Klik om als baliepersoneel te ontgrendelen met PIN."
-            >
-              <Lock className="h-3 w-3 text-amber-600" />
-              <span>Vergrendeld</span>
-            </button>
-          )}
-        </div>
+      <div className="flex justify-end items-center border-b border-black/5 pb-3 mb-2">
         <div className="flex items-center gap-2 text-xs font-mono text-slate-500">
           <span className="flex items-center gap-1 bg-white/70 px-2.5 py-1 rounded-full border border-black/5 shadow-2xs backdrop-blur-xs">
             <Clock className="h-3.5 w-3.5 text-[#0071E3]" />
@@ -1621,101 +1602,101 @@ export default function KioskApp({
         dir={isCurrentRtl ? 'rtl' : 'ltr'}
       >
         {/* Toggle Virtual Keyboard Button */}
-        <button
-          id="btn-kiosk-toggle-keyboard"
-          type="button"
-          onClick={() => {
-            const nextState = !showVirtualKeyboard;
-            setShowVirtualKeyboard(nextState);
-            if (nextState && !activeInputField) {
-              if (currentScreen === 'f1_details' || currentScreen === 'f2_patient_form') {
-                setActiveInputField({ id: 'firstName', label: 'Voornaam', isNumeric: false });
-              } else if (currentScreen === 'help_form') {
-                setActiveInputField({ id: 'helpName', label: t.helpNameLabel, isNumeric: false });
-              }
-            }
-          }}
-          className={`flex items-center gap-1.5 text-xs transition-all duration-200 font-semibold cursor-pointer py-1.5 px-3.5 rounded-full border backdrop-blur-xs ${
-            showVirtualKeyboard 
-              ? 'bg-[#0071E3] text-white border-blue-400/40 shadow-sm' 
-              : 'text-slate-600 hover:text-slate-900 bg-white/70 border-black/5 hover:bg-white shadow-2xs'
-          }`}
-          title="Schermtoetsenbord in- of uitschakelen"
-        >
-          <Keyboard className="h-3.5 w-3.5" />
-          <span>{showVirtualKeyboard ? 'Toetsenbord sluiten' : 'Toetsenbord'}</span>
-        </button>
-
-        {/* Language selector */}
-        <div className="relative">
           <button
-            id="btn-kiosk-lang-selector"
-            onClick={() => { playTone('tap'); setLangMenuOpen(!langMenuOpen); }}
-            className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 transition font-semibold cursor-pointer py-1.5 px-3 rounded-full bg-white/70 hover:bg-white border border-black/5 shadow-2xs backdrop-blur-xs"
+            id="btn-kiosk-toggle-keyboard"
+            type="button"
+            onClick={() => {
+              const nextState = !showVirtualKeyboard;
+              setShowVirtualKeyboard(nextState);
+              if (nextState && !activeInputField) {
+                if (currentScreen === 'f1_details' || currentScreen === 'f2_patient_form') {
+                  setActiveInputField({ id: 'firstName', label: 'Voornaam', isNumeric: false });
+                } else if (currentScreen === 'help_form') {
+                  setActiveInputField({ id: 'helpName', label: t.helpNameLabel, isNumeric: false });
+                }
+              }
+            }}
+            className={`flex items-center gap-1.5 text-xs transition-all duration-200 font-semibold cursor-pointer py-1.5 px-3.5 rounded-full border backdrop-blur-xs ${
+              showVirtualKeyboard 
+                ? 'bg-[#0071E3] text-white border-blue-400/40 shadow-sm' 
+                : 'text-slate-600 hover:text-slate-900 bg-white/70 border-black/5 hover:bg-white shadow-2xs'
+            }`}
+            title="Schermtoetsenbord in- of uitschakelen"
           >
-            <Globe2 className="h-3.5 w-3.5 text-[#0071E3]" />
-            <span>taal &bull; language &bull; langue</span>
-            <span className="bg-[#0071E3] text-white rounded-md px-1.5 py-0.5 text-[10px] ml-1 font-bold">
-              {lang}
-            </span>
+            <Keyboard className="h-3.5 w-3.5" />
+            <span>{showVirtualKeyboard ? 'Toetsenbord sluiten' : 'Toetsenbord'}</span>
           </button>
 
-          {langMenuOpen && (
-            <>
-              <div 
-                className="fixed inset-0 z-40" 
-                onClick={() => setLangMenuOpen(false)} 
-              />
-              <div 
-                className={`absolute bottom-10 z-50 apple-glass border border-white/80 rounded-2xl shadow-2xl p-2 w-52 animate-fade-in-up ${isCurrentRtl ? 'left-0' : 'right-0'}`}
-              >
-                <div className="text-[11px] text-slate-400 font-semibold px-2.5 pb-2 border-b border-black/5 mb-1">
-                  Kies uw taal / Choose language:
+          {/* Language selector */}
+          <div className="relative">
+            <button
+              id="btn-kiosk-lang-selector"
+              onClick={() => { playTone('tap'); setLangMenuOpen(!langMenuOpen); }}
+              className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 transition font-semibold cursor-pointer py-1.5 px-3 rounded-full bg-white/70 hover:bg-white border border-black/5 shadow-2xs backdrop-blur-xs"
+            >
+              <Globe2 className="h-3.5 w-3.5 text-[#0071E3]" />
+              <span>taal &bull; language &bull; langue</span>
+              <span className="bg-[#0071E3] text-white rounded-md px-1.5 py-0.5 text-[10px] ml-1 font-bold">
+                {lang}
+              </span>
+            </button>
+
+            {langMenuOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setLangMenuOpen(false)} 
+                />
+                <div 
+                  className={`absolute bottom-10 z-50 apple-glass border border-white/80 rounded-2xl shadow-2xl p-2 w-52 animate-fade-in-up ${isCurrentRtl ? 'left-0' : 'right-0'}`}
+                >
+                  <div className="text-[11px] text-slate-400 font-semibold px-2.5 pb-2 border-b border-black/5 mb-1">
+                    Kies uw taal / Choose language:
+                  </div>
+                  
+                  <button
+                    onClick={() => handleLanguageSelect('NL')}
+                    className={`w-full text-start px-3 py-2 rounded-xl text-sm transition flex items-center justify-between cursor-pointer ${lang === 'NL' ? 'bg-[#0071E3] text-white font-bold shadow-xs' : 'text-slate-700 hover:bg-black/5'}`}
+                  >
+                    <span>Nederlands</span>
+                    <span className={`text-xs font-mono ${lang === 'NL' ? 'text-white/80' : 'text-slate-400'}`}>NL</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleLanguageSelect('EN')}
+                    className={`w-full text-start px-3 py-2 rounded-xl text-sm transition flex items-center justify-between cursor-pointer ${lang === 'EN' ? 'bg-[#0071E3] text-white font-bold shadow-xs' : 'text-slate-700 hover:bg-black/5'}`}
+                  >
+                    <span>English</span>
+                    <span className={`text-xs font-mono ${lang === 'EN' ? 'text-white/80' : 'text-slate-400'}`}>EN</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleLanguageSelect('FR')}
+                    className={`w-full text-start px-3 py-2 rounded-xl text-sm transition flex items-center justify-between cursor-pointer ${lang === 'FR' ? 'bg-[#0071E3] text-white font-bold shadow-xs' : 'text-slate-700 hover:bg-black/5'}`}
+                  >
+                    <span>Français</span>
+                    <span className={`text-xs font-mono ${lang === 'FR' ? 'text-white/80' : 'text-slate-400'}`}>FR</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleLanguageSelect('TR')}
+                    className={`w-full text-start px-3 py-2 rounded-xl text-sm transition flex items-center justify-between cursor-pointer ${lang === 'TR' ? 'bg-[#0071E3] text-white font-bold shadow-xs' : 'text-slate-700 hover:bg-black/5'}`}
+                  >
+                    <span>Türkçe</span>
+                    <span className={`text-xs font-mono ${lang === 'TR' ? 'text-white/80' : 'text-slate-400'}`}>TR</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleLanguageSelect('AR')}
+                    className={`w-full text-start px-3 py-2 rounded-xl text-sm transition flex items-center justify-between cursor-pointer ${lang === 'AR' ? 'bg-[#0071E3] text-white font-bold shadow-xs' : 'text-slate-700 hover:bg-black/5'}`}
+                  >
+                    <span className="font-sans">العربية</span>
+                    <span className={`text-xs font-mono ${lang === 'AR' ? 'text-white/80' : 'text-slate-400'}`}>AR</span>
+                  </button>
                 </div>
-                
-                <button
-                  onClick={() => handleLanguageSelect('NL')}
-                  className={`w-full text-start px-3 py-2 rounded-xl text-sm transition flex items-center justify-between cursor-pointer ${lang === 'NL' ? 'bg-[#0071E3] text-white font-bold shadow-xs' : 'text-slate-700 hover:bg-black/5'}`}
-                >
-                  <span>Nederlands</span>
-                  <span className={`text-xs font-mono ${lang === 'NL' ? 'text-white/80' : 'text-slate-400'}`}>NL</span>
-                </button>
-
-                <button
-                  onClick={() => handleLanguageSelect('EN')}
-                  className={`w-full text-start px-3 py-2 rounded-xl text-sm transition flex items-center justify-between cursor-pointer ${lang === 'EN' ? 'bg-[#0071E3] text-white font-bold shadow-xs' : 'text-slate-700 hover:bg-black/5'}`}
-                >
-                  <span>English</span>
-                  <span className={`text-xs font-mono ${lang === 'EN' ? 'text-white/80' : 'text-slate-400'}`}>EN</span>
-                </button>
-
-                <button
-                  onClick={() => handleLanguageSelect('FR')}
-                  className={`w-full text-start px-3 py-2 rounded-xl text-sm transition flex items-center justify-between cursor-pointer ${lang === 'FR' ? 'bg-[#0071E3] text-white font-bold shadow-xs' : 'text-slate-700 hover:bg-black/5'}`}
-                >
-                  <span>Français</span>
-                  <span className={`text-xs font-mono ${lang === 'FR' ? 'text-white/80' : 'text-slate-400'}`}>FR</span>
-                </button>
-
-                <button
-                  onClick={() => handleLanguageSelect('TR')}
-                  className={`w-full text-start px-3 py-2 rounded-xl text-sm transition flex items-center justify-between cursor-pointer ${lang === 'TR' ? 'bg-[#0071E3] text-white font-bold shadow-xs' : 'text-slate-700 hover:bg-black/5'}`}
-                >
-                  <span>Türkçe</span>
-                  <span className={`text-xs font-mono ${lang === 'TR' ? 'text-white/80' : 'text-slate-400'}`}>TR</span>
-                </button>
-
-                <button
-                  onClick={() => handleLanguageSelect('AR')}
-                  className={`w-full text-start px-3 py-2 rounded-xl text-sm transition flex items-center justify-between cursor-pointer ${lang === 'AR' ? 'bg-[#0071E3] text-white font-bold shadow-xs' : 'text-slate-700 hover:bg-black/5'}`}
-                >
-                  <span className="font-sans">العربية</span>
-                  <span className={`text-xs font-mono ${lang === 'AR' ? 'text-white/80' : 'text-slate-400'}`}>AR</span>
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+              </>
+            )}
+          </div>
       </div>
 
       {/* On-Screen Touch Virtual Keyboard */}
@@ -1736,6 +1717,24 @@ export default function KioskApp({
           />
         </div>
       )}
+
+      {/* Geheime hoek-hotspot in de uiterste linker onderhoek (voor tablet touch & snelle balie-toegang) */}
+      <button
+        id="btn-secret-corner-hotspot"
+        type="button"
+        onClick={() => {
+          if (onOpenAdminWithPin) {
+            onOpenAdminWithPin();
+          } else if (onOpenAdmin) {
+            onOpenAdmin();
+          }
+        }}
+        className="fixed bottom-0 left-0 z-40 w-12 h-12 flex items-end justify-start p-2 text-slate-400/10 hover:text-slate-600 active:text-slate-900 transition-all cursor-pointer focus:outline-none group"
+        title="Admin Modus (Pincode vereist)"
+        aria-label="Admin Modus Hotspot"
+      >
+        <Lock className="h-3 w-3 opacity-10 group-hover:opacity-80 transition-opacity" />
+      </button>
     </div>
   );
 }

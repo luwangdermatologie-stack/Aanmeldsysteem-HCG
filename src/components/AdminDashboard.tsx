@@ -34,8 +34,7 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
-  Tablet,
-  LayoutGrid
+  Tablet
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -701,44 +700,19 @@ export default function AdminDashboard({
       )}
       
       {/* Admin Panel Header Banner - Apple Glass Header */}
-      <div className="apple-glass px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 border-b border-black/5 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[#0071E3] flex items-center justify-center">
-            <Settings className="h-4.5 w-4.5" />
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              Dermato-Care Portaal 
-              <span className="text-[11px] font-semibold bg-blue-500/10 text-[#0071E3] border border-blue-500/20 rounded-full px-2.5 py-0.5">
-                Live Beheer
-              </span>
-            </h2>
-          </div>
-        </div>
-
+      <div className="apple-glass px-6 py-3 flex justify-end items-center gap-2.5 border-b border-black/5 shrink-0">
         {/* Action controls inside header */}
         <div className="flex gap-2 text-xs flex-wrap items-center">
           {onSwitchView && (
-            <div className="flex items-center gap-1 bg-white/80 p-0.5 rounded-full border border-black/5 shadow-2xs backdrop-blur-xs">
-              <button
-                type="button"
-                onClick={() => onSwitchView('kiosk')}
-                className="px-2.5 py-1 rounded-full text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer font-semibold flex items-center gap-1 text-[11px]"
-                title="Naar Kiosk (Patiënten Tablet)"
-              >
-                <Tablet className="h-3 w-3 text-[#0071E3]" />
-                <span>Kiosk</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onSwitchView('split')}
-                className="px-2.5 py-1 rounded-full text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer font-semibold flex items-center gap-1 text-[11px]"
-                title="Naar Dual-View"
-              >
-                <LayoutGrid className="h-3 w-3 text-indigo-500" />
-                <span>Dual-View</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => onSwitchView('kiosk')}
+              className="px-3 py-1.5 rounded-full bg-white/80 hover:bg-white text-slate-700 hover:text-slate-900 border border-black/5 shadow-2xs backdrop-blur-xs transition cursor-pointer font-semibold flex items-center gap-1.5 text-xs"
+              title="Naar Kiosk (Patiënten Tablet)"
+            >
+              <Tablet className="h-3.5 w-3.5 text-[#0071E3]" />
+              <span>Kiosk</span>
+            </button>
           )}
           <div className="bg-white/80 px-3.5 py-1.5 rounded-full border border-black/5 flex items-center gap-1.5 text-slate-600 shadow-2xs backdrop-blur-xs">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -754,17 +728,6 @@ export default function AdminDashboard({
           >
             Configuratie & Reset
           </button>
-          {onLockAdmin && (
-            <button
-              id="btn-admin-header-lock"
-              onClick={onLockAdmin}
-              className="px-3.5 py-1.5 rounded-full border border-red-200 bg-white/80 hover:bg-red-50 text-slate-700 hover:text-red-700 transition cursor-pointer font-semibold flex items-center gap-1.5 shadow-2xs"
-              title="Vergrendel Admin Dashboard (Keer terug naar kiosk)"
-            >
-              <Lock className="h-3.5 w-3.5 text-red-500" />
-              <span>Vergrendel Admin</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -1108,9 +1071,6 @@ export default function AdminDashboard({
                 <FolderSync className="h-5 w-5 text-amber-500" />
                 <h3 className="font-bold text-slate-800 text-base">Nieuw Dagdeel Instellen (Wachtrij Reset)</h3>
               </div>
-              <p className="text-slate-500 text-xs leading-relaxed">
-                Een medische dermatologische praktijk werkt in twee discrete dagdelen. Selecteer de nieuwe patiëntenverdeling, wijs de dokters toe aan hun zalen en selecteer de ondersteunende baliewerker.
-              </p>
 
               <div className="space-y-3">
                 <div className="flex flex-col">
@@ -1219,9 +1179,6 @@ export default function AdminDashboard({
                         ✗ Fout bij koppeling: {testError}
                       </div>
                     )}
-                    <span className="text-[10px] text-[#A68F8A] mt-1 block leading-normal">
-                      Indien leeg gelaten, worden de notificaties prachtig doorgestuurd en getoond in het speciaal ingebouwde "Teams Logboek" tabblad hiernaast.
-                    </span>
                   </div>
 
                   <div className="pt-2">
@@ -1245,7 +1202,6 @@ export default function AdminDashboard({
                   </div>
                   <div>
                     <h3 className="font-bold text-slate-800 text-base">Pincode & Beveiliging</h3>
-                    <p className="text-[11px] text-slate-500">Toegangsbeveiliging voor beheer en kiosk</p>
                   </div>
                 </div>
 
@@ -1293,28 +1249,6 @@ export default function AdminDashboard({
                       Standaard ingesteld op <strong>1234</strong>. Wordt gevraagd bij openen van het beheer of ontgrendelen van de kiosk.
                     </span>
                   </div>
-
-                  <div className="p-3 bg-amber-50/60 rounded-lg border border-amber-200/80 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-amber-950">Kiosk Kiosk-modus status:</span>
-                      <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                        {systemConfig.kioskLocked ? 'Vergrendeld' : 'Vrij / Kiosk'}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-amber-800 leading-relaxed">
-                      In kioskmodus kan het personeel via de vergrendelknop bovenaan het beheerpaneel direct terugkeren naar het aanmeldscherm.
-                    </p>
-                    {onLockAdmin && (
-                      <button
-                        type="button"
-                        onClick={onLockAdmin}
-                        className="w-full mt-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-1.5 px-3 rounded-md transition cursor-pointer flex items-center justify-center gap-1.5 text-xs shadow-xs"
-                      >
-                        <Lock className="h-3.5 w-3.5" />
-                        Vergrendel Admin Nu (Keer terug naar Kiosk)
-                      </button>
-                    )}
-                  </div>
                 </div>
               </div>
             </div>
@@ -1328,7 +1262,6 @@ export default function AdminDashboard({
                   </div>
                   <div>
                     <h3 className="font-bold text-slate-800 text-base">GDPR & Gegevensretentie</h3>
-                    <p className="text-[11px] text-slate-500">Automatische periodieke anonimisering (AVG Art. 5)</p>
                   </div>
                 </div>
 
@@ -1374,33 +1307,6 @@ export default function AdminDashboard({
                       <option value={72}>72 uur (3 dagen)</option>
                       <option value={168}>7 dagen (168 uur)</option>
                     </select>
-                  </div>
-
-                  {/* GDPR Status Metrics */}
-                  <div className="grid grid-cols-3 gap-2 py-1">
-                    <div className="p-2 rounded-lg bg-slate-50 border border-slate-150 text-center">
-                      <span className="text-[10px] text-slate-500 block">Totaal dossiers</span>
-                      <strong className="text-sm text-slate-800 font-bold">{patients.length}</strong>
-                    </div>
-                    <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-center">
-                      <span className="text-[10px] text-emerald-700 block">Geanonimiseerd</span>
-                      <strong className="text-sm text-emerald-800 font-bold">
-                        {patients.filter(p => p.isAnonymized).length}
-                      </strong>
-                    </div>
-                    <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-center">
-                      <span className="text-[10px] text-blue-700 block">Identificeerbaar</span>
-                      <strong className="text-sm text-blue-800 font-bold">
-                        {patients.filter(p => !p.isAnonymized).length}
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div className="text-[10px] text-slate-500 flex justify-between items-center pt-1 border-t border-slate-100">
-                    <span>Laatste opschoning:</span>
-                    <strong className="text-slate-700">
-                      {systemConfig.lastGdprRun ? new Date(systemConfig.lastGdprRun).toLocaleString('nl-BE') : 'Nog niet uitgevoerd'}
-                    </strong>
                   </div>
 
                   <button

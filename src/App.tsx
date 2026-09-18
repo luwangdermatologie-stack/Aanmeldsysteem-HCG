@@ -316,6 +316,16 @@ export default function App() {
     setViewMode('kiosk');
   };
 
+  const handleOpenAdminWithPin = () => {
+    handleOpenPinModal({
+      title: 'Beheerder Toegang (Backend)',
+      subtitle: 'Voer de 4-cijferige balie-pincode in om naar de admin modus te gaan.',
+      onSuccess: () => {
+        setViewMode('admin');
+      }
+    });
+  };
+
   // Sync Patients
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'patients'), (snapshot) => {
@@ -776,35 +786,10 @@ export default function App() {
         
         {/* VIEW 1: DUAL-VIEW SPLIT LIVE SYNC SIMULATION (EDGE-TO-EDGE) */}
         {viewMode === 'split' && (
-          <div className="flex-1 w-full h-full min-h-screen flex flex-col p-2 sm:p-4 gap-3 bg-[#f1f5f9]">
-            
-            {/* Minimal dual-view top bar with quick switch */}
-            <div className="flex justify-between items-center px-2 py-1 text-xs text-slate-600">
-              <div className="flex items-center gap-2 font-medium">
-                <span className="h-2 w-2 rounded-full bg-[#0071E3] animate-pulse"></span>
-                <span>Dual-View Simulatie &bull; Wachtkamer Kiosk + Secretariaat Live Sync</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleRequestViewChange('kiosk')}
-                  className="px-2.5 py-1 rounded-full bg-white hover:bg-slate-50 border border-black/10 text-slate-700 font-semibold flex items-center gap-1 shadow-2xs cursor-pointer text-[11px]"
-                >
-                  <Tablet className="h-3 w-3 text-[#0071E3]" />
-                  <span>Alleen Kiosk</span>
-                </button>
-                <button
-                  onClick={() => handleRequestViewChange('admin')}
-                  className="px-2.5 py-1 rounded-full bg-white hover:bg-slate-50 border border-black/10 text-slate-700 font-semibold flex items-center gap-1 shadow-2xs cursor-pointer text-[11px]"
-                >
-                  <Monitor className="h-3 w-3 text-[#0071E3]" />
-                  <span>Alleen Admin</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch w-full">
+          <div className="flex-1 w-full h-full min-h-screen flex flex-col p-0 m-0 bg-slate-100">
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-0 items-stretch w-full">
               {/* LEFT 5 COLUMNS: THE TABLET KIOSK (CLEAN BORDERLESS VIEW) */}
-              <div className="lg:col-span-5 flex flex-col bg-white rounded-xl shadow-xs overflow-hidden">
+              <div className="lg:col-span-5 flex flex-col bg-white border-r border-slate-200 overflow-hidden">
                 <KioskApp 
                   doctors={doctors}
                   onPatientRegister={handlePatientRegister}
@@ -814,12 +799,13 @@ export default function App() {
                   onToggleFullscreen={handleToggleFullscreen}
                   isFullscreen={isFullscreen}
                   onOpenAdmin={() => handleRequestViewChange('admin')}
+                  onOpenAdminWithPin={handleOpenAdminWithPin}
                   onOpenSplit={() => handleRequestViewChange('split')}
                 />
               </div>
 
               {/* RIGHT 7 COLUMNS: SECRETARIAAT ADMIN (CLEAN BORDERLESS VIEW) */}
-              <div className="lg:col-span-7 flex flex-col bg-white rounded-xl shadow-xs overflow-hidden">
+              <div className="lg:col-span-7 flex flex-col bg-white overflow-hidden">
                 <AdminDashboard 
                   patients={patients}
                   doctors={doctors}
@@ -858,6 +844,7 @@ export default function App() {
               onToggleFullscreen={handleToggleFullscreen}
               isFullscreen={isFullscreen}
               onOpenAdmin={() => handleRequestViewChange('admin')}
+              onOpenAdminWithPin={handleOpenAdminWithPin}
               onOpenSplit={() => handleRequestViewChange('split')}
             />
           </div>

@@ -49,6 +49,24 @@ export const PinLockModal: React.FC<PinLockModalProps> = ({
     return () => clearInterval(interval);
   }, [isLockedOut, lockoutTimer]);
 
+  // Physical keyboard support
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key >= '0' && e.key <= '9') {
+        handleDigit(e.key);
+      } else if (e.key === 'Backspace') {
+        handleBackspace();
+      } else if (e.key === 'Escape') {
+        onCancel();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isLockedOut, pin, expectedPin]);
+
   if (!isOpen) return null;
 
   const handleDigit = (digit: string) => {
@@ -192,7 +210,11 @@ export const PinLockModal: React.FC<PinLockModalProps> = ({
         </div>
 
         <div className="mt-5 text-[11px] text-slate-400">
-          Standaard balie-pincode is ingesteld op <strong>1234</strong>
+          {expectedPin === '1234' ? (
+            <span>Standaard balie-pincode is ingesteld op <strong>1234</strong> (aanpasbaar in beheer).</span>
+          ) : (
+            <span>Voer de persoonlijke pincode in zoals geconfigureerd in het beheerpaneel.</span>
+          )}
         </div>
       </div>
     </div>
