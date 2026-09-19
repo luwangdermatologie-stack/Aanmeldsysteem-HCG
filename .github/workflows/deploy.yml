@@ -27,8 +27,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
+
+      - name: Setup GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
 
       - name: Install dependencies
         run: npm ci || npm install
@@ -37,9 +41,7 @@ jobs:
         run: npm run build
         env:
           VITE_APP_ENV: production
-
-      - name: Setup GitHub Pages
-        uses: actions/configure-pages@v5
+          VITE_BASE_PATH: ${{ steps.pages.outputs.base_path || '/' }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
