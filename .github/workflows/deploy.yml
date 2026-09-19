@@ -35,6 +35,8 @@ jobs:
 
       - name: Build production bundle
         run: npm run build
+        env:
+          VITE_APP_ENV: production
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5

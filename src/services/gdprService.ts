@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { collection, getDocs, doc, writeBatch, updateDoc, setDoc } from 'firebase/firestore';
-import { db, sanitizeForFirestore, handleFirestoreError, OperationType } from '../firebase';
+import { getDocs, writeBatch, updateDoc, setDoc } from 'firebase/firestore';
+import { db, col, docRef, sanitizeForFirestore, handleFirestoreError, OperationType } from '../firebase';
 import { Patient, SystemConfig } from '../types';
 
 /**
@@ -36,7 +36,7 @@ export async function executeGdprAnonymization(
   retentionHours: number = 24
 ): Promise<{ processed: number; anonymized: number }> {
   try {
-    const patientsRef = collection(db, 'patients');
+    const patientsRef = col('patients');
     const snapshot = await getDocs(patientsRef);
 
     if (snapshot.empty) {
@@ -96,11 +96,11 @@ export async function executeGdprAnonymization(
         isRead: false
       };
 
-      await setDoc(doc(db, 'notifications', notifId), sanitizeForFirestore(auditEntry));
+      await setDoc(docRef('notifications', notifId), sanitizeForFirestore(auditEntry));
     }
 
     // Update lastGdprRun timestamp in config
-    const configDoc = doc(db, 'config', 'system');
+    const configDoc = docRef('config', 'system');
     await updateDoc(configDoc, {
       lastGdprRun: new Date().toISOString()
     });

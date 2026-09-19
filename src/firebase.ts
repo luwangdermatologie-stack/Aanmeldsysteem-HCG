@@ -20,6 +20,10 @@ import {
 import firebaseConfig from '../firebase-applet-config.json';
 import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timesheet, StaffMember, LeaveRequest, GeneralComment, TodoItem } from './types';
 import { INITIAL_LEAVE_STAFF, getISOWeekDetails } from './services/leaveService';
+import { getDetectedEnvironment, getEnvCollectionName, AppEnvironment } from './config/environment';
+
+export { getDetectedEnvironment, getEnvCollectionName };
+export type { AppEnvironment };
 
 const app = initializeApp(firebaseConfig);
 // Initialize Firestore using the configured database ID or the default database
@@ -27,6 +31,22 @@ export const db = (firebaseConfig as any).firestoreDatabaseId
   ? getFirestore(app, (firebaseConfig as any).firestoreDatabaseId)
   : getFirestore(app);
 export const auth = getAuth(app);
+
+/**
+ * Returns a Firestore CollectionReference configured for the active environment.
+ * If in 'test' (Google AI Studio), resolves to 'test_<baseName>'.
+ * If in 'production' (GitHub active environment), resolves to '<baseName>'.
+ */
+export function col(baseName: string) {
+  return collection(db, getEnvCollectionName(baseName));
+}
+
+/**
+ * Returns a Firestore DocumentReference configured for the active environment.
+ */
+export function docRef(baseName: string, pathOrId: string, ...rest: string[]) {
+  return doc(db, getEnvCollectionName(baseName), pathOrId, ...rest);
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -68,8 +88,7 @@ const INITIAL_DOCTORS: Doctor[] = [
   { id: 'dr-mertens', name: 'Dr. Elisabeth Mertens', specialty: 'Algemene Dermatologie', waitingRoom: 'Gelijkvloers', isAvailable: true, avatarColor: 'bg-teal-500' },
   { id: 'dr-vancamp', name: 'Dr. Jasper Van Camp', specialty: 'Huidkanker & Dermatochirurgie', waitingRoom: 'Bovenverdieping', isAvailable: true, avatarColor: 'bg-rose-500' },
   { id: 'dr-nilsson', name: 'Dr. Linnea Nilsson', specialty: 'Esthetische Dermatologie', waitingRoom: 'Gelijkvloers', isAvailable: true, avatarColor: 'bg-indigo-500' },
-  { id: 'dr-mansour', name: 'Dr. Ahmed Mansour', specialty: 'Kinderdermatologie', waitingRoom: 'Bovenverdieping', isAvailable: true, avatarColor: 'bg-amber-500' },
-  { id: 'nurse-verpleegkundige', name: 'De verpleegkundige', specialty: 'Verpleegkundige zorg & Wondzorg', waitingRoom: 'Gelijkvloers', isAvailable: true, avatarColor: 'bg-emerald-500' }
+  { id: 'dr-mansour', name: 'Dr. Ahmed Mansour', specialty: 'Kinderdermatologie', waitingRoom: 'Bovenverdieping', isAvailable: true, avatarColor: 'bg-amber-500' }
 ];
 
 const INITIAL_STAFF: ActiveStaff[] = [
@@ -152,74 +171,85 @@ const DEFAULT_CONFIG: SystemConfig = {
  */
 export async function initializeDatabaseIfEmpty() {
   try {
-    const doctorsSnap = await getDocs(collection(db, 'doctors'));
+    const doctorsSnap = await getDocs(col('doctors'));
     if (doctorsSnap.empty) {
-      console.log('Populating initial doctors...');
+      console.log('Populating initial doctors for active environment...');
       const batch = writeBatch(db);
       INITIAL_DOCTORS.forEach(dr => {
-        batch.set(doc(db, 'doctors', dr.id), dr);
+        batch.set(docRef('doctors', dr.id), dr);
       });
       await batch.commit();
-    } else {
-      // Ensure "De verpleegkundige" is always present even if database was already initialized
-      const nurseDoc = await getDoc(doc(db, 'doctors', 'nurse-verpleegkundige'));
-      if (!nurseDoc.exists()) {
-        await setDoc(doc(db, 'doctors', 'nurse-verpleegkundige'), {
-          id: 'nurse-verpleegkundige',
-          name: 'De verpleegkundige',
-          specialty: 'Verpleegkundige zorg & Wondzorg',
-          waitingRoom: 'Gelijkvloers',
-          isAvailable: true,
-          avatarColor: 'bg-emerald-500'
-        });
-      }
     }
 
-    const staffSnap = await getDocs(collection(db, 'staff'));
+    // Clean up "De verpleegkundige" from doctors/staff/leave_staff collections.
+    // "De verpleegkundige" is strictly a kiosk-only placeholder for patients on Gelijkvloers,
+    // and must never exist as a practitioner/doctor in the database.
+    try {
+      const nurseDoc = await getDoc(docRef('doctors', 'nurse-verpleegkundige'));
+      if (nurseDoc.exists()) {
+        await deleteDoc(docRef('doctors', 'nurse-verpleegkundige'));
+      }
+      const nurseStaffDoc = await getDoc(docRef('staff', 'nurse-verpleegkundige'));
+      if (nurseStaffDoc.exists()) {
+        await deleteDoc(docRef('staff', 'nurse-verpleegkundige'));
+      }
+      const nurseLeaveDoc = await getDoc(docRef('leave_staff', 'nurse-verpleegkundige'));
+      if (nurseLeaveDoc.exists()) {
+        await deleteDoc(docRef('leave_staff', 'nurse-verpleegkundige'));
+      }
+      const nurseLeaveDoc2 = await getDoc(docRef('leave_staff', 'staff-nurse-verpleegkundige'));
+      if (nurseLeaveDoc2.exists()) {
+        await deleteDoc(docRef('leave_staff', 'staff-nurse-verpleegkundige'));
+      }
+    } catch (cleanErr) {
+      console.warn('Cleanup placeholder nurse note:', cleanErr);
+    }
+
+    const staffSnap = await getDocs(col('staff'));
     if (staffSnap.empty) {
-      console.log('Populating initial staff...');
+      console.log('Populating initial staff for active environment...');
       const batch = writeBatch(db);
       INITIAL_STAFF.forEach(st => {
-        batch.set(doc(db, 'staff', st.id), st);
+        batch.set(docRef('staff', st.id), st);
       });
       await batch.commit();
     }
 
-    const patientsSnap = await getDocs(collection(db, 'patients'));
+    const patientsSnap = await getDocs(col('patients'));
     if (patientsSnap.empty) {
-      console.log('Populating initial patients...');
+      console.log('Populating initial patients for active environment...');
       const batch = writeBatch(db);
       PRELOADED_PATIENTS.forEach(pat => {
-        batch.set(doc(db, 'patients', pat.id), pat);
+        batch.set(docRef('patients', pat.id), pat);
       });
       await batch.commit();
     }
 
-    const configDoc = await getDoc(doc(db, 'config', 'system'));
+    const configDoc = await getDoc(docRef('config', 'system'));
     if (!configDoc.exists()) {
       console.log('Populating system config with new Webhook URL...');
-      await setDoc(doc(db, 'config', 'system'), DEFAULT_CONFIG);
+      await setDoc(docRef('config', 'system'), DEFAULT_CONFIG);
     }
 
     // Initialize Leave Planning Collections
-    const leaveStaffSnap = await getDocs(collection(db, 'leave_staff'));
+    const leaveStaffSnap = await getDocs(col('leave_staff'));
     if (leaveStaffSnap.empty) {
       console.log('Populating initial leave staff members...');
       const batch = writeBatch(db);
       INITIAL_LEAVE_STAFF.forEach(staff => {
-        batch.set(doc(db, 'leave_staff', staff.id), staff);
+        batch.set(docRef('leave_staff', staff.id), staff);
       });
       await batch.commit();
     }
 
-    const leaveRequestsSnap = await getDocs(collection(db, 'leave_requests'));
+    const leaveRequestsSnap = await getDocs(col('leave_requests'));
     if (leaveRequestsSnap.empty) {
       console.log('Populating initial sample leave requests...');
       const batch = writeBatch(db);
       const weekInfo = getISOWeekDetails(new Date());
-      const wednesdayDateStr = weekInfo.days[2].dateStr; // Wednesday this week
-      const thursdayDateStr = weekInfo.days[3].dateStr;  // Thursday this week
-      const fridayDateStr = weekInfo.days[4].dateStr;    // Friday this week
+      const wednesdayDateStr = weekInfo.days[2].dateStr;
+      const thursdayDateStr = weekInfo.days[3].dateStr;
+      const fridayDateStr = weekInfo.days[4].dateStr;
 
       const sampleRequests: LeaveRequest[] = [
         {
@@ -258,12 +288,12 @@ export async function initializeDatabaseIfEmpty() {
       ];
 
       sampleRequests.forEach(req => {
-        batch.set(doc(db, 'leave_requests', req.id), req);
+        batch.set(docRef('leave_requests', req.id), req);
       });
       await batch.commit();
     }
 
-    const leaveCommentsSnap = await getDocs(collection(db, 'leave_comments'));
+    const leaveCommentsSnap = await getDocs(col('leave_comments'));
     if (leaveCommentsSnap.empty) {
       console.log('Populating initial sample leave comments...');
       const batch = writeBatch(db);
@@ -276,11 +306,11 @@ export async function initializeDatabaseIfEmpty() {
         message: 'Gelieve verlofaanvragen voor de herfst- en eindejaarsperiode tijdig in te dienen zodat de zaalbezetting tijdig kan worden afgestemd.',
         created_at: new Date().toISOString()
       };
-      batch.set(doc(db, 'leave_comments', sampleComment.id), sampleComment);
+      batch.set(docRef('leave_comments', sampleComment.id), sampleComment);
       await batch.commit();
     }
 
-    const leaveTodosSnap = await getDocs(collection(db, 'leave_todos'));
+    const leaveTodosSnap = await getDocs(col('leave_todos'));
     if (leaveTodosSnap.empty) {
       console.log('Populating initial sample leave coordinator todos...');
       const batch = writeBatch(db);
@@ -318,11 +348,69 @@ export async function initializeDatabaseIfEmpty() {
       ];
 
       sampleTodos.forEach(td => {
-        batch.set(doc(db, 'leave_todos', td.id), td);
+        batch.set(docRef('leave_todos', td.id), td);
       });
       await batch.commit();
     }
   } catch (err) {
     console.error('Error during database initialization:', err);
+  }
+}
+
+/**
+ * Copies real doctors and staff from the production environment (GitHub) into the test environment,
+ * providing a realistic test dataset without touching production records.
+ */
+export async function cloneProductionStaffToTest(): Promise<{ doctorsCount: number; staffCount: number }> {
+  try {
+    const prodDoctorsSnap = await getDocs(collection(db, 'doctors'));
+    const prodStaffSnap = await getDocs(collection(db, 'staff'));
+    const prodLeaveStaffSnap = await getDocs(collection(db, 'leave_staff'));
+
+    const batch = writeBatch(db);
+    let doctorsCount = 0;
+    let staffCount = 0;
+
+    prodDoctorsSnap.forEach(d => {
+      batch.set(doc(db, 'test_doctors', d.id), d.data());
+      doctorsCount++;
+    });
+
+    prodStaffSnap.forEach(s => {
+      batch.set(doc(db, 'test_staff', s.id), s.data());
+      staffCount++;
+    });
+
+    prodLeaveStaffSnap.forEach(ls => {
+      batch.set(doc(db, 'test_leave_staff', ls.id), ls.data());
+    });
+
+    await batch.commit();
+    return { doctorsCount, staffCount };
+  } catch (err) {
+    console.error('Failed to clone production staff to test:', err);
+    throw err;
+  }
+}
+
+/**
+ * Resets all test collections to a clean state. Never touches production data.
+ */
+export async function resetTestDatabase(): Promise<void> {
+  try {
+    const testCols = ['test_patients', 'test_timesheets', 'test_notifications', 'test_leave_requests', 'test_leave_comments', 'test_leave_todos'];
+    for (const c of testCols) {
+      const snap = await getDocs(collection(db, c));
+      if (!snap.empty) {
+        const batch = writeBatch(db);
+        snap.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+    // Re-initialize clean test data
+    await initializeDatabaseIfEmpty();
+  } catch (err) {
+    console.error('Failed to reset test database:', err);
+    throw err;
   }
 }

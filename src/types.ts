@@ -59,6 +59,8 @@ export interface SystemConfig {
   googleSheetsBackupHour?: number; // 22 by default
   googleSheetsSpreadsheetId?: string;
   googleSheetsSpreadsheetUrl?: string;
+  leaveGoogleSheetsSpreadsheetId?: string;
+  leaveGoogleSheetsSpreadsheetUrl?: string;
   lastGoogleSheetsBackupAt?: string;
   lastGoogleSheetsBackupStatus?: 'Success' | 'Failed' | 'Never' | 'InProgress';
   lastGoogleSheetsBackupMessage?: string;
@@ -121,7 +123,7 @@ export interface StaffMember {
 }
 
 export type LeaveSlot = 'VM' | 'NM' | 'HELE_DAG';
-export type LeaveType = 'regulier' | 'verplicht';
+export type LeaveType = 'regulier' | 'verplicht' | 'gecompenseerd';
 export type LeaveStatus = 'aangevraagd' | 'goedgekeurd' | 'afgekeurd' | 'on_hold';
 
 export interface LeaveRequest {
@@ -131,7 +133,7 @@ export interface LeaveRequest {
   date: string; // YYYY-MM-DD
   slot: LeaveSlot;
   units: number; // 0.5 voor VM of NM, 1.0 voor HELE_DAG
-  type: LeaveType; // 'regulier' | 'verplicht' ('verplicht' enkel voor verpleegkundigen)
+  type: LeaveType; // 'regulier' | 'verplicht' | 'gecompenseerd' (gecompenseerde werkdag trekt af van teller)
   status: LeaveStatus; // 'aangevraagd' | 'goedgekeurd' | 'afgekeurd' | 'on_hold'
   note?: string; // Optionele toelichting of planner opmerking
   created_at?: string;

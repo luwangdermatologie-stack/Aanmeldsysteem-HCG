@@ -34,7 +34,8 @@ import {
   Info,
   CalendarCheck,
   AlertTriangle,
-  Award
+  Award,
+  Briefcase
 } from 'lucide-react';
 
 interface LeaveRequestsSubmoduleProps {
@@ -378,9 +379,9 @@ export const LeaveRequestsSubmodule: React.FC<LeaveRequestsSubmoduleProps> = ({
               {/* Verloftype Keuze: Regulier vs Verplicht */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Type Verlof <span className="text-red-500">*</span>
+                  Type Verlof of Extra Werkdag <span className="text-red-500">*</span>
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <label
                     className={`flex items-center gap-2 p-2.5 rounded-lg border text-xs font-bold cursor-pointer transition ${
                       leaveType === 'regulier'
@@ -410,7 +411,7 @@ export const LeaveRequestsSubmodule: React.FC<LeaveRequestsSubmoduleProps> = ({
                     title={
                       currentStaff?.role === 'arts'
                         ? 'Verplicht verlof is enkel selecteerbaar voor verpleegkundigen'
-                        : 'Verplicht verlof voor verpleegkundigen'
+                        : 'Verplicht verlof voor verpleegkundigen (+ teller)'
                     }
                   >
                     <input
@@ -424,13 +425,47 @@ export const LeaveRequestsSubmodule: React.FC<LeaveRequestsSubmoduleProps> = ({
                     />
                     <span>Verplicht Verlof</span>
                   </label>
+
+                  <label
+                    className={`flex items-center gap-2 p-2.5 rounded-lg border text-xs font-bold transition ${
+                      currentStaff?.role === 'arts'
+                        ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                        : leaveType === 'gecompenseerd'
+                        ? 'bg-teal-50 border-teal-400 text-teal-900 shadow-2xs cursor-pointer'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer'
+                    }`}
+                    title={
+                      currentStaff?.role === 'arts'
+                        ? 'Gecompenseerde werkdagen zijn enkel voor verpleegkundigen'
+                        : 'Extra moment komen werken (- teller verplicht verlof)'
+                    }
+                  >
+                    <input
+                      type="radio"
+                      name="leaveType"
+                      value="gecompenseerd"
+                      disabled={currentStaff?.role === 'arts'}
+                      checked={leaveType === 'gecompenseerd'}
+                      onChange={() => setLeaveType('gecompenseerd')}
+                      className="text-teal-600 focus:ring-teal-500 disabled:opacity-50"
+                    />
+                    <div className="flex items-center gap-1">
+                      <Briefcase className="w-3.5 h-3.5 text-teal-700 shrink-0" />
+                      <span>Gecompenseerd</span>
+                    </div>
+                  </label>
                 </div>
-                {currentStaff?.role === 'arts' && (
+                {currentStaff?.role === 'arts' ? (
                   <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
                     <Info className="w-3.5 h-3.5 text-blue-500" />
                     Artsen kunnen enkel regulier verlof selecteren.
                   </p>
-                )}
+                ) : leaveType === 'gecompenseerd' ? (
+                  <p className="text-[11px] text-teal-700 font-medium mt-1 flex items-center gap-1">
+                    <Info className="w-3.5 h-3.5 text-teal-600" />
+                    Extra moment komen werken: trekt automatisch af van de verplicht verlof teller.
+                  </p>
+                ) : null}
               </div>
 
               {/* Real-time feedback banner */}
@@ -438,7 +473,7 @@ export const LeaveRequestsSubmodule: React.FC<LeaveRequestsSubmoduleProps> = ({
                 <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold">Niet ingeroosterd:</span>
+                    <span className="font-bold">Niet mogelijk:</span>
                     <p className="mt-0.5 text-[11px] leading-relaxed">{liveValidation.error}</p>
                   </div>
                 </div>
@@ -446,7 +481,9 @@ export const LeaveRequestsSubmodule: React.FC<LeaveRequestsSubmoduleProps> = ({
                 <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span className="text-[11px] font-medium">
-                    {currentStaff?.name} staat ingeroosterd op dit dagdeel.
+                    {leaveType === 'gecompenseerd'
+                      ? `${currentStaff?.name} is vrij op dit dagdeel en kan extra komen werken (gecompenseerde werkdag).`
+                      : `${currentStaff?.name} staat ingeroosterd op dit dagdeel.`}
                   </span>
                 </div>
               )}
@@ -639,6 +676,7 @@ export const LeaveRequestsSubmodule: React.FC<LeaveRequestsSubmoduleProps> = ({
                 <option value="all">Alle Types</option>
                 <option value="regulier">Regulier Verlof</option>
                 <option value="verplicht">Verplicht Verlof</option>
+                <option value="gecompenseerd">Gecompenseerde Werkdag</option>
               </select>
             </div>
           </div>
@@ -702,7 +740,12 @@ export const LeaveRequestsSubmodule: React.FC<LeaveRequestsSubmoduleProps> = ({
                         {req.units} dag
                       </td>
                       <td className="p-3">
-                        {req.type === 'verplicht' ? (
+                        {req.type === 'gecompenseerd' ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-900 border border-teal-300 flex items-center gap-1 w-fit">
+                            <Briefcase className="w-3 h-3 text-teal-700" />
+                            Gecompenseerd (-{req.units}d)
+                          </span>
+                        ) : req.type === 'verplicht' ? (
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
                             Verplicht Verlof
                           </span>

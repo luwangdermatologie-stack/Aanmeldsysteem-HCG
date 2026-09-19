@@ -15,10 +15,8 @@ import {
   ActiveStaff,
   Doctor
 } from '../types';
-import { db } from '../firebase';
+import { db, col, docRef } from '../firebase';
 import {
-  collection,
-  doc,
   getDocs,
   writeBatch
 } from 'firebase/firestore';
@@ -436,14 +434,37 @@ export function validateLeaveRequest(
   const dayLabel = DAYS_OF_WEEK.find(d => d.key === dayKey)?.label || dayKey;
 
   // 1. Role validation: Doctors can only take 'regulier'
-  if (staff.role === 'arts' && type === 'verplicht') {
+  if (staff.role === 'arts' && (type === 'verplicht' || type === 'gecompenseerd')) {
     return {
       valid: false,
-      error: `Artsen kunnen enkel 'Regulier verlof' aanvragen. 'Verplicht verlof' is uitsluitend voorbehouden voor verpleegkundigen.`
+      error: `Artsen kunnen enkel 'Regulier verlof' aanvragen. 'Verplicht verlof' en 'Gecompenseerde werkdagen' zijn gekoppeld aan de urenregistratie en verlofteller van verpleegkundigen.`
     };
   }
 
-  // 2. Schedule validation based on slot
+  // 2. Gecompenseerde werkdag: Extra moment komen werken
+  if (type === 'gecompenseerd') {
+    if (slot === 'VM' && daySchedule.vm) {
+      return {
+        valid: false,
+        error: `${staff.name} staat volgens het vaste werkschema op ${dayLabel}voormiddag (VM) al standaard ingeroosterd om te werken.`
+      };
+    }
+    if (slot === 'NM' && daySchedule.nm) {
+      return {
+        valid: false,
+        error: `${staff.name} staat volgens het vaste werkschema op ${dayLabel}namiddag (NM) al standaard ingeroosterd om te werken.`
+      };
+    }
+    if (slot === 'HELE_DAG' && daySchedule.vm && daySchedule.nm) {
+      return {
+        valid: false,
+        error: `${staff.name} staat op ${dayLabel} al de volledige dag ingeroosterd om te werken.`
+      };
+    }
+    return { valid: true };
+  }
+
+  // 3. Schedule validation for leave based on slot (Regulier / Verplicht)
   if (slot === 'VM') {
     if (!daySchedule.vm) {
       return {
@@ -483,30 +504,48 @@ export function validateLeaveRequest(
 }
 
 /**
- * Calculates compulsory leave counter for a nurse across all approved records
+ * Calculates compulsory leave counter for a nurse across all approved records.
+ * Gecompenseerde werkdagen worden afgetrokken van deze verplicht verlof teller.
  */
 export function calculateCompulsoryLeaveCounter(staffId: string, requests: LeaveRequest[]) {
-  const staffRequests = requests.filter(r => r.staff_id === staffId && r.type === 'verplicht');
-  
-  const approved = staffRequests.filter(r => r.status === 'goedgekeurd');
-  const pending = staffRequests.filter(r => r.status === 'aangevraagd');
-  const rejected = staffRequests.filter(r => r.status === 'afgekeurd');
+  const staffRequests = requests.filter(r => r.staff_id === staffId);
+  const compulsoryRequests = staffRequests.filter(r => r.type === 'verplicht');
+  const compensatedRequests = staffRequests.filter(r => r.type === 'gecompenseerd');
 
-  const totalApprovedDays = approved.reduce((sum, r) => sum + (r.units || (r.slot === 'HELE_DAG' ? 1.0 : 0.5)), 0);
-  const totalApprovedHalfDays = totalApprovedDays * 2;
+  const approvedCompulsory = compulsoryRequests.filter(r => r.status === 'goedgekeurd');
+  const pendingCompulsory = compulsoryRequests.filter(r => r.status === 'aangevraagd');
+  const rejectedCompulsory = compulsoryRequests.filter(r => r.status === 'afgekeurd');
 
-  const totalPendingDays = pending.reduce((sum, r) => sum + (r.units || (r.slot === 'HELE_DAG' ? 1.0 : 0.5)), 0);
+  const approvedCompensated = compensatedRequests.filter(r => r.status === 'goedgekeurd');
+  const pendingCompensated = compensatedRequests.filter(r => r.status === 'aangevraagd');
+  const rejectedCompensated = compensatedRequests.filter(r => r.status === 'afgekeurd');
+
+  const grossApprovedCompulsoryDays = approvedCompulsory.reduce((sum, r) => sum + (r.units || (r.slot === 'HELE_DAG' ? 1.0 : 0.5)), 0);
+  const approvedCompensatedDays = approvedCompensated.reduce((sum, r) => sum + (r.units || (r.slot === 'HELE_DAG' ? 1.0 : 0.5)), 0);
+
+  // Compensated workdays are subtracted from the compulsory leave counter
+  const netApprovedDays = Math.round((grossApprovedCompulsoryDays - approvedCompensatedDays) * 10) / 10;
+  const netApprovedHalfDays = Math.round(netApprovedDays * 2);
+
+  const totalPendingDays = pendingCompulsory.reduce((sum, r) => sum + (r.units || (r.slot === 'HELE_DAG' ? 1.0 : 0.5)), 0);
   const totalPendingHalfDays = totalPendingDays * 2;
 
   return {
-    totalApprovedDays,
-    totalApprovedHalfDays,
-    approvedCount: approved.length,
+    totalApprovedDays: netApprovedDays,
+    netApprovedDays,
+    totalApprovedHalfDays: netApprovedHalfDays,
+    netApprovedHalfDays,
+    grossApprovedCompulsoryDays,
+    approvedCompensatedDays,
+    approvedCount: approvedCompulsory.length,
+    approvedCompensatedCount: approvedCompensated.length,
     totalPendingDays,
     totalPendingHalfDays,
-    pendingCount: pending.length,
-    rejectedCount: rejected.length,
-    allVerplichtCount: staffRequests.length
+    pendingCount: pendingCompulsory.length,
+    pendingCompensatedCount: pendingCompensated.length,
+    rejectedCount: rejectedCompulsory.length + rejectedCompensated.length,
+    allVerplichtCount: compulsoryRequests.length,
+    allCompensatedCount: compensatedRequests.length
   };
 }
 
@@ -699,6 +738,18 @@ export interface StaffSyncResult {
   totalLeaveStaff: number;
 }
 
+export const isNursePlaceholder = (name?: string, id?: string): boolean => {
+  const n = (name || '').toLowerCase().trim();
+  const i = (id || '').toLowerCase().trim();
+  return (
+    i === 'nurse-verpleegkundige' ||
+    i === 'staff-nurse-verpleegkundige' ||
+    n === 'de verpleegkundige' ||
+    n.startsWith('de verpleegkundige') ||
+    n === 'verpleegkundige'
+  );
+};
+
 /**
  * Synchronizes staff members between Configuratie & Reset (ActiveStaff[] and Doctor[])
  * and Personeelsbeheer in Verlofplanning (StaffMember[] in Firestore collection 'leave_staff').
@@ -716,22 +767,46 @@ export async function syncStaffBetweenConfigAndLeave(
 
   try {
     // 1. Fetch current leave_staff docs
-    const leaveStaffSnap = await getDocs(collection(db, 'leave_staff'));
+    const leaveStaffSnap = await getDocs(col('leave_staff'));
     const currentLeaveStaff: StaffMember[] = [];
+    const purgeBatch = writeBatch(db);
+    let purgeCount = 0;
+
     leaveStaffSnap.forEach(d => {
-      currentLeaveStaff.push({ ...d.data(), id: d.id } as StaffMember);
+      const data = d.data() as StaffMember;
+      const id = d.id;
+      // Strictly detect and delete any accidental "De verpleegkundige" records from leave_staff
+      if (isNursePlaceholder(data.name, id)) {
+        purgeBatch.delete(docRef('leave_staff', id));
+        purgeCount++;
+      } else {
+        currentLeaveStaff.push({ ...data, id });
+      }
     });
+
+    if (purgeCount > 0) {
+      await purgeBatch.commit();
+      console.log(`[LeaveStaff Sync] Purged ${purgeCount} placeholder 'De verpleegkundige' entries from leave_staff.`);
+    }
 
     // If completely empty, fallback to INITIAL_LEAVE_STAFF as base
     if (currentLeaveStaff.length === 0) {
-      INITIAL_LEAVE_STAFF.forEach(s => currentLeaveStaff.push({ ...s }));
+      INITIAL_LEAVE_STAFF.forEach(s => {
+        if (!isNursePlaceholder(s.name, s.id)) {
+          currentLeaveStaff.push({ ...s });
+        }
+      });
     }
 
     const batch = writeBatch(db);
     let batchHasOperations = false;
 
-    // 2. Synchronize activeStaffList (Balie-medewerkers / Personeelsleden) -> leave_staff
-    for (const st of activeStaffList) {
+    // Filter out kiosk placeholder from activeStaffList and doctors
+    const realActiveStaff = activeStaffList.filter(st => !isNursePlaceholder(st.name, st.id));
+    const realDoctors = doctors.filter(dr => !isNursePlaceholder(dr.name, dr.id));
+
+    // 2. Synchronize realActiveStaff (Balie-medewerkers / Personeelsleden) -> leave_staff
+    for (const st of realActiveStaff) {
       if (!st.name || !st.name.trim()) continue;
       const normalizedName = st.name.trim().toLowerCase();
 
@@ -751,7 +826,7 @@ export async function syncStaffBetweenConfigAndLeave(
 
         if (needsUpdate) {
           batch.set(
-            doc(db, 'leave_staff', existing.id),
+            docRef('leave_staff', existing.id),
             {
               ...existing,
               name: st.name.trim(),
@@ -783,15 +858,15 @@ export async function syncStaffBetweenConfigAndLeave(
           color: STAFF_COLOR_PALETTE[(currentLeaveStaff.length + result.addedToLeave) % STAFF_COLOR_PALETTE.length].hex
         };
 
-        batch.set(doc(db, 'leave_staff', newStaffMember.id), newStaffMember);
+        batch.set(docRef('leave_staff', newStaffMember.id), newStaffMember);
         currentLeaveStaff.push(newStaffMember);
         result.addedToLeave++;
         batchHasOperations = true;
       }
     }
 
-    // 3. Synchronize doctors (Dermatologen) -> leave_staff
-    for (const dr of doctors) {
+    // 3. Synchronize doctors (Dermatologen) -> leave_staff (Excluding placeholders)
+    for (const dr of realDoctors) {
       if (!dr.name || !dr.name.trim()) continue;
       const normalizedName = dr.name.trim().toLowerCase();
 
@@ -804,7 +879,7 @@ export async function syncStaffBetweenConfigAndLeave(
       if (existing) {
         if (existing.name.trim() !== dr.name.trim()) {
           batch.set(
-            doc(db, 'leave_staff', existing.id),
+            docRef('leave_staff', existing.id),
             {
               ...existing,
               name: dr.name.trim()
@@ -824,7 +899,7 @@ export async function syncStaffBetweenConfigAndLeave(
           schedule: JSON.parse(JSON.stringify(DEFAULT_FULLTIME_SCHEDULE)),
           color: STAFF_COLOR_PALETTE[(currentLeaveStaff.length + result.addedToLeave) % STAFF_COLOR_PALETTE.length].hex
         };
-        batch.set(doc(db, 'leave_staff', newDocStaff.id), newDocStaff);
+        batch.set(docRef('leave_staff', newDocStaff.id), newDocStaff);
         currentLeaveStaff.push(newDocStaff);
         result.addedToLeave++;
         batchHasOperations = true;
@@ -833,8 +908,8 @@ export async function syncStaffBetweenConfigAndLeave(
 
     // 4. Reverse sync: if there are verpleegkundigen in leave_staff not present in activeStaffList
     for (const ls of currentLeaveStaff) {
-      if (ls.role === 'verpleegkundige') {
-        const inActiveStaff = activeStaffList.some(
+      if (ls.role === 'verpleegkundige' && !isNursePlaceholder(ls.name, ls.id)) {
+        const inActiveStaff = realActiveStaff.some(
           st => st.id === ls.id ||
                 st.id === ls.activeStaffId ||
                 st.name.trim().toLowerCase() === ls.name.trim().toLowerCase()
@@ -846,7 +921,7 @@ export async function syncStaffBetweenConfigAndLeave(
             name: ls.name.trim(),
             role: ls.jobTitle || 'Verpleegkundige / Medewerker'
           };
-          batch.set(doc(db, 'staff', newActive.id), newActive);
+          batch.set(docRef('staff', newActive.id), newActive);
           result.addedToConfig++;
           batchHasOperations = true;
         }

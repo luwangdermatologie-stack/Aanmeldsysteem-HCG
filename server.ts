@@ -1,12 +1,9 @@
 import express from "express";
-import http from "http";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 
 async function startServer() {
   const app = express();
-  const server = http.createServer(app);
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = 3000;
 
   // Support JSON payloads
   app.use(express.json());
@@ -254,7 +251,7 @@ async function startServer() {
       leaveBackupState.lastBackupStatus = 'Success';
       leaveBackupState.spreadsheetId = targetSheetId || 'configured-or-created';
       leaveBackupState.spreadsheetUrl = targetSheetId ? `https://docs.google.com/spreadsheets/d/${targetSheetId}` : null;
-      leaveBackupState.lastBackupMessage = `Wekelijkse backup succesvol uitgevoerd op ${new Date().toLocaleString('nl-BE')}. 3 tabbladen (Personeel & Schemas, Verlofaanvragen, Verplicht Verlof Teller) gesynchroniseerd.`;
+      leaveBackupState.lastBackupMessage = `Wekelijkse backup succesvol uitgevoerd op ${new Date().toLocaleString('nl-BE')}. Chronologische verlofplanning (Geplande & Aangevraagde Verloven) gesynchroniseerd.`;
 
       console.log(`[Google Sheets Backup] Backup succesvol verwerkt om ${now}`);
       return res.json({ status: "success", details: leaveBackupState });
@@ -286,23 +283,21 @@ async function startServer() {
 
   // Attach Vite middleware for real-time asset serving in development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-      server: { 
-        middlewareMode: true,
-        hmr: { server },
-      },
+      server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = path.resolve(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
-  server.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`[Server] Draait live op http://localhost:${PORT}`);
   });
 }

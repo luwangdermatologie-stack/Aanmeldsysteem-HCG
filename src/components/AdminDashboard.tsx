@@ -3,12 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timesheet } from '../types';
 import GoogleSheetsBackupSection from './GoogleSheetsBackupSection';
 import { LeavePlanningModule } from './leave/LeavePlanningModule';
 import { TeamsChatAndLogModule } from './TeamsChatAndLogModule';
 import { syncStaffBetweenConfigAndLeave } from '../services/leaveService';
+import { getDetectedEnvironment, setEnvironmentOverride, isTestEnvironment, AppEnvironment } from '../config/environment';
+import { cloneProductionStaffToTest, resetTestDatabase } from '../firebase';
 import { 
   Users, 
   Settings, 
@@ -35,7 +37,10 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
-  Tablet
+  Tablet,
+  Database,
+  Copy,
+  Sparkles
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -59,6 +64,7 @@ interface AdminDashboardProps {
   onTeamsNotify?: (messageText: string, target?: string, payload?: any) => Promise<boolean>;
   onSwitchView?: (view: 'kiosk' | 'split' | 'admin') => void;
   onSyncStaff?: () => Promise<any>;
+  onRestoreTimesheets?: (restored: Timesheet[]) => Promise<void>;
 }
 
 export default function AdminDashboard({
@@ -81,7 +87,8 @@ export default function AdminDashboard({
   onRunGdprAnonymize,
   onTeamsNotify,
   onSwitchView,
-  onSyncStaff
+  onSyncStaff,
+  onRestoreTimesheets
 }: AdminDashboardProps) {
   // Tabs and filters inside Admin
   const [activeTab, setActiveTab] = useState<'overview' | 'config' | 'timesheets' | 'leave'>('overview');
@@ -152,6 +159,53 @@ export default function AdminDashboard({
       showToast("Fout bij uitvoeren van GDPR opschoning: " + (err?.message || 'Onbekende fout'), "warning");
     } finally {
       setIsGdprRunning(false);
+    }
+  };
+
+  // Environment state & management
+  const [currentEnv, setCurrentEnv] = useState<AppEnvironment>(getDetectedEnvironment());
+  const [isCloningData, setIsCloningData] = useState(false);
+  const [isResettingTestData, setIsResettingTestData] = useState(false);
+
+  useEffect(() => {
+    const handleEnvChange = (e: any) => {
+      const newEnv = e.detail?.environment || getDetectedEnvironment();
+      setCurrentEnv(newEnv);
+    };
+    window.addEventListener('hcg_environment_changed', handleEnvChange);
+    return () => window.removeEventListener('hcg_environment_changed', handleEnvChange);
+  }, []);
+
+  const handleToggleEnvironment = () => {
+    const nextEnv: AppEnvironment = currentEnv === 'test' ? 'production' : 'test';
+    setEnvironmentOverride(nextEnv);
+    setCurrentEnv(nextEnv);
+    showToast(`Omschakeling naar ${nextEnv === 'test' ? 'Testomgeving (AI Studio)' : 'Productie-omgeving (GitHub)'}`, "info");
+  };
+
+  const handleCloneStaffToTest = async () => {
+    if (!confirm("Weet u zeker dat u de actieve artsen en balie-medewerkers uit de productie-omgeving wilt kopiëren naar de testomgeving? Bestaande test-artsen worden bijgewerkt.")) return;
+    setIsCloningData(true);
+    try {
+      const res = await cloneProductionStaffToTest();
+      showToast(`Succesvol ${res.doctorsCount} artsen en ${res.staffCount} medewerkers naar de testomgeving gekopieerd!`, "success");
+    } catch (err: any) {
+      showToast("Fout bij kopiëren van personeel naar testomgeving: " + (err?.message || 'Onbekende fout'), "warning");
+    } finally {
+      setIsCloningData(false);
+    }
+  };
+
+  const handleResetTestData = async () => {
+    if (!confirm("🚨 Pas op: dit zal ALLE testgegevens in de testomgeving (patiënten, prikklok, verlofaanvragen, etc.) leegmaken. Dit heeft GEEN invloed op de productie op GitHub. Doorgaan?")) return;
+    setIsResettingTestData(true);
+    try {
+      await resetTestDatabase();
+      showToast("Testomgeving succesvol opgeschoond en opnieuw geïnitialiseerd.", "success");
+    } catch (err: any) {
+      showToast("Fout bij leegmaken van testdatabase: " + (err?.message || 'Onbekende fout'), "warning");
+    } finally {
+      setIsResettingTestData(false);
     }
   };
 
@@ -731,6 +785,26 @@ export default function AdminDashboard({
       <div className="apple-glass px-6 py-3 flex justify-end items-center gap-2.5 border-b border-black/5 shrink-0">
         {/* Action controls inside header */}
         <div className="flex gap-2 text-xs flex-wrap items-center">
+          {/* Environment Status Badge & Quick Switcher */}
+          <div className={`px-3 py-1.5 rounded-full border text-xs font-medium shadow-2xs backdrop-blur-xs flex items-center gap-1.5 ${
+            currentEnv === 'test' 
+              ? 'bg-amber-50/90 border-amber-200 text-amber-800' 
+              : 'bg-emerald-50/90 border-emerald-200 text-emerald-800'
+          }`}>
+            <Database className={`h-3 w-3 ${currentEnv === 'test' ? 'text-amber-600' : 'text-emerald-600'}`} />
+            <span>
+              Omgeving: <strong className="font-semibold">{currentEnv === 'test' ? 'Test (AI Studio)' : 'Productie (GitHub)'}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={handleToggleEnvironment}
+              title={`Klik om te wisselen naar ${currentEnv === 'test' ? 'Productie' : 'Test'}`}
+              className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-white hover:bg-slate-100 text-slate-700 font-semibold cursor-pointer border border-slate-200/80 shadow-2xs transition"
+            >
+              Wissel
+            </button>
+          </div>
+
           {onSwitchView && (
             <button
               type="button"
@@ -1488,7 +1562,9 @@ export default function AdminDashboard({
 
                   {/* List of doctors */}
                   <div className="space-y-2 mb-4 max-h-[220px] overflow-y-auto pr-1">
-                    {doctors.map(dr => (
+                    {doctors
+                      .filter(dr => dr.id !== 'nurse-verpleegkundige' && !dr.name.toLowerCase().includes('verpleegkundige'))
+                      .map(dr => (
                       <div key={dr.id} className="flex justify-between items-center p-2.5 rounded-lg bg-slate-50 border border-slate-150 text-xs">
                         {editingDocId === dr.id ? (
                           <div className="flex flex-col gap-1.5 w-full mr-2">
@@ -1615,6 +1691,99 @@ export default function AdminDashboard({
                       + Voeg Toe aan Artsenbestand
                     </button>
                   </form>
+                </div>
+              </div>
+
+              {/* Card: Data Scheiding & Testomgeving (Google AI Studio vs. GitHub) */}
+              <div className="md:col-span-2 bg-gradient-to-br from-white to-slate-50/80 p-5 rounded-xl border border-slate-200/80 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Database className="h-5 w-5 text-indigo-600" />
+                    <div>
+                      <h3 className="font-bold text-slate-800 text-base">
+                        Data Scheiding: Testomgeving (Google AI Studio) vs. Productie (GitHub)
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Strikte fysieke scheiding tussen ingevoerde testdata en de actieve live omgeving.
+                      </p>
+                    </div>
+                  </div>
+                  <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
+                    currentEnv === 'test' 
+                      ? 'bg-amber-100 text-amber-900 border border-amber-300' 
+                      : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                  }`}>
+                    <span className={`h-2 w-2 rounded-full ${currentEnv === 'test' ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+                    Actief: {currentEnv === 'test' ? 'Testomgeving (AI Studio)' : 'Productie (GitHub)'}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                  <div className="p-3.5 bg-white rounded-lg border border-slate-200/60 shadow-2xs">
+                    <span className="font-bold text-slate-700 block mb-1 text-sm">🧪 Testomgeving (AI Studio)</span>
+                    <p className="text-slate-600 leading-relaxed">
+                      Alle data ingevoerd in Google AI Studio of preview-containers wordt automatisch opgeslagen in afgezonderde <code className="bg-amber-50 text-amber-700 px-1 py-0.5 rounded font-mono font-semibold">test_*</code> collecties.
+                    </p>
+                    <span className="inline-block mt-2 text-[11px] text-amber-700 font-semibold bg-amber-50/80 px-2 py-0.5 rounded">
+                      Geen sync naar GitHub
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 bg-white rounded-lg border border-slate-200/60 shadow-2xs">
+                    <span className="font-bold text-slate-700 block mb-1 text-sm">🌐 Productie-omgeving (GitHub)</span>
+                    <p className="text-slate-600 leading-relaxed">
+                      De actieve GitHub Pages build (<code className="bg-slate-100 text-slate-700 px-1 py-0.5 rounded font-mono font-semibold">*.github.io</code>) gebruikt de officiële productie-collecties zonder test-voorvoegsel.
+                    </p>
+                    <span className="inline-block mt-2 text-[11px] text-emerald-700 font-semibold bg-emerald-50/80 px-2 py-0.5 rounded">
+                      Veilig afgeschermd
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 bg-white rounded-lg border border-slate-200/60 shadow-2xs flex flex-col justify-between">
+                    <div>
+                      <span className="font-bold text-slate-700 block mb-1 text-sm">⚙️ Omgeving Wisselen</span>
+                      <p className="text-slate-600 leading-relaxed">
+                        Schakel handmatig tussen test- en productiedata voor validatie en beheer in de browser.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleEnvironment}
+                      className="mt-3 w-full bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2 px-3 rounded-lg transition text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Schakel naar {currentEnv === 'test' ? 'Productie (GitHub)' : 'Test (AI Studio)'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Test Environment Tools */}
+                <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-3 items-center justify-between">
+                  <div className="text-xs text-slate-500">
+                    Hulpfuncties voor de testomgeving:
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      disabled={isCloningData}
+                      onClick={handleCloneStaffToTest}
+                      className="px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                      title="Kopieer de actieve artsen en balie-medewerkers van productie naar test, zodat de testomgeving direct klaar is voor gebruik."
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      {isCloningData ? 'Bezig met kopiëren...' : 'Kopieer Artsen & Medewerkers naar Test'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isResettingTestData}
+                      onClick={handleResetTestData}
+                      className="px-3 py-1.5 bg-white hover:bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                      title="Maakt alle test_* documenten leeg zonder productie aan te raken."
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {isResettingTestData ? 'Bezig met wissen...' : 'Testdata Volledig Leegmaken'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1870,6 +2039,7 @@ export default function AdminDashboard({
               staffList={activeStaffList}
               systemConfig={systemConfig}
               onUpdateConfig={onUpdateConfig}
+              onRestoreTimesheets={onRestoreTimesheets}
             />
           </div>
         )}
@@ -1882,6 +2052,7 @@ export default function AdminDashboard({
               doctors={doctors}
               onUpdateStaff={onUpdateStaff}
               onUpdateDoctors={onUpdateDoctors}
+              systemConfig={systemConfig}
             />
           </div>
         )}

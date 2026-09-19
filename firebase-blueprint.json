@@ -125,6 +125,30 @@
     "timesheets": {
       "schema": "timesheet",
       "description": "Staff clock-in/out records"
+    },
+    "test_patients": {
+      "schema": "patient",
+      "description": "Isolated test patients for Google AI Studio environment"
+    },
+    "test_doctors": {
+      "schema": "doctor",
+      "description": "Isolated test doctors for Google AI Studio environment"
+    },
+    "test_staff": {
+      "schema": "activeStaff",
+      "description": "Isolated test staff for Google AI Studio environment"
+    },
+    "test_config": {
+      "schema": "systemConfig",
+      "description": "Isolated test config for Google AI Studio environment"
+    },
+    "test_notifications": {
+      "schema": "teamsNotification",
+      "description": "Isolated test notifications for Google AI Studio environment"
+    },
+    "test_timesheets": {
+      "schema": "timesheet",
+      "description": "Isolated test timesheets for Google AI Studio environment"
     }
   }
 }

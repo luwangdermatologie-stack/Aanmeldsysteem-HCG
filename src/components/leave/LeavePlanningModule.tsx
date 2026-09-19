@@ -5,8 +5,6 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  collection,
-  doc,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -16,7 +14,7 @@ import {
   where,
   getDocs
 } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { db, col, docRef, getDetectedEnvironment } from '../../firebase';
 import {
   StaffMember,
   LeaveRequest,
@@ -27,11 +25,13 @@ import {
   LeaveType,
   WeeklySchedule,
   ActiveStaff,
-  Doctor
+  Doctor,
+  SystemConfig
 } from '../../types';
 import { INITIAL_LEAVE_STAFF, getDefaultSampleLeaveRequests, syncStaffBetweenConfigAndLeave } from '../../services/leaveService';
-import { backupLeaveToGoogleSheets } from '../../services/leaveSheetsBackup';
+import { backupLeaveToGoogleSheets, downloadLeaveCsv } from '../../services/leaveSheetsBackup';
 import { getAccessToken } from '../../services/googleSheetsService';
+import { BackupRestoreModal } from '../BackupRestoreModal';
 import { WeekOverviewSubmodule } from './WeekOverviewSubmodule';
 import { MonthOverviewSubmodule } from './MonthOverviewSubmodule';
 import { LeaveApprovalSubmodule } from './LeaveApprovalSubmodule';
@@ -49,7 +49,9 @@ import {
   CheckCircle2,
   Clock,
   CheckSquare,
-  Layers
+  Layers,
+  Download,
+  RotateCcw
 } from 'lucide-react';
 
 type SubTab =
@@ -71,15 +73,18 @@ export interface LeavePlanningModuleProps {
   doctors?: Doctor[];
   onUpdateStaff?: (staff: ActiveStaff[]) => void;
   onUpdateDoctors?: (doctors: Doctor[]) => void;
+  systemConfig?: SystemConfig;
 }
 
 export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   activeStaffList,
   doctors,
   onUpdateStaff,
-  onUpdateDoctors
+  onUpdateDoctors,
+  systemConfig
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('week_overview');
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
 
   // Firestore & Local Cache Collections Data
   const [staffList, setStaffList] = useState<StaffMember[]>(() => {
@@ -166,6 +171,16 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   });
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [backupFeedback, setBackupFeedback] = useState<string | null>(null);
+  const [currentEnv, setCurrentEnv] = useState<string>(getDetectedEnvironment());
+
+  useEffect(() => {
+    const handleEnvChange = (e: any) => {
+      const newEnv = e.detail?.environment || getDetectedEnvironment();
+      setCurrentEnv(newEnv);
+    };
+    window.addEventListener('hcg_environment_changed', handleEnvChange);
+    return () => window.removeEventListener('hcg_environment_changed', handleEnvChange);
+  }, []);
 
   // =========================================================================
   // 1. FIRESTORE REAL-TIME SUBSCRIPTIONS
@@ -173,7 +188,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   useEffect(() => {
     // 1. Staff Members
     const unsubStaff = onSnapshot(
-      collection(db, 'leave_staff'),
+      col('leave_staff'),
       snapshot => {
         if (!snapshot.empty) {
           const list: StaffMember[] = [];
@@ -201,7 +216,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
     // 2. Leave Requests
     const unsubRequests = onSnapshot(
-      collection(db, 'leave_requests'),
+      col('leave_requests'),
       snapshot => {
         if (!snapshot.empty) {
           const list: LeaveRequest[] = [];
@@ -222,7 +237,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
     // 3. Comments
     const unsubComments = onSnapshot(
-      collection(db, 'leave_comments'),
+      col('leave_comments'),
       snapshot => {
         if (!snapshot.empty) {
           const list: GeneralComment[] = [];
@@ -243,7 +258,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
     // 4. Coordinator Todos
     const unsubTodos = onSnapshot(
-      collection(db, 'leave_todos'),
+      col('leave_todos'),
       snapshot => {
         if (!snapshot.empty) {
           const list: TodoItem[] = [];
@@ -271,7 +286,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       unsubComments();
       unsubTodos();
     };
-  }, []);
+  }, [currentEnv]);
 
   const fetchBackupStatus = async () => {
     try {
@@ -308,7 +323,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     });
 
     // Non-blocking Firestore sync (optimistic local update already applied)
-    setDoc(doc(db, 'leave_comments', newId), sanitizeForFirestore(newComment))
+    setDoc(docRef('leave_comments', newId), sanitizeForFirestore(newComment))
       .catch(err => console.warn('Firestore comment write failed, saved locally:', err));
   };
 
@@ -321,7 +336,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
-    deleteDoc(doc(db, 'leave_comments', commentId))
+    deleteDoc(docRef('leave_comments', commentId))
       .catch(err => console.warn('Firestore comment delete failed, removed locally:', err));
   };
 
@@ -342,7 +357,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
-    setDoc(doc(db, 'leave_todos', newId), sanitizeForFirestore(newTodo))
+    setDoc(docRef('leave_todos', newId), sanitizeForFirestore(newTodo))
       .catch(err => console.warn('Firestore todo write failed, saved locally:', err));
   };
 
@@ -355,7 +370,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
-    updateDoc(doc(db, 'leave_todos', todoId), {
+    updateDoc(docRef('leave_todos', todoId), {
       is_completed: !currentCompleted,
       archived: !currentCompleted
     }).catch(err => console.warn('Firestore todo toggle failed, updated locally:', err));
@@ -370,7 +385,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
-    deleteDoc(doc(db, 'leave_todos', todoId))
+    deleteDoc(docRef('leave_todos', todoId))
       .catch(err => console.warn('Firestore todo delete failed, removed locally:', err));
   };
 
@@ -383,7 +398,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
-    updateDoc(doc(db, 'leave_todos', todoId), {
+    updateDoc(docRef('leave_todos', todoId), {
       is_completed: false,
       archived: false
     }).catch(err => console.warn('Firestore todo restore failed, updated locally:', err));
@@ -487,11 +502,11 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
     // 3. PERSIST TO FIRESTORE IN BACKGROUND (NON-BLOCKING)
     if (docToWrite) {
-      setDoc(doc(db, 'leave_requests', (docToWrite as LeaveRequest).id), sanitizeForFirestore(docToWrite))
+      setDoc(docRef('leave_requests', (docToWrite as LeaveRequest).id), sanitizeForFirestore(docToWrite))
         .catch(err => console.warn('Firestore leave request write failed, saved locally:', err));
     }
     if (splitDocToWrite) {
-      setDoc(doc(db, 'leave_requests', (splitDocToWrite as LeaveRequest).id), sanitizeForFirestore(splitDocToWrite))
+      setDoc(docRef('leave_requests', (splitDocToWrite as LeaveRequest).id), sanitizeForFirestore(splitDocToWrite))
         .catch(err => console.warn('Firestore split leave request write failed, saved locally:', err));
     }
   };
@@ -507,7 +522,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     });
 
     // 2. PERSIST TO FIRESTORE IN BACKGROUND (NON-BLOCKING)
-    deleteDoc(doc(db, 'leave_requests', requestId))
+    deleteDoc(docRef('leave_requests', requestId))
       .catch(err => console.warn('Firestore leave delete failed, removed locally:', err));
   };
 
@@ -531,7 +546,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     });
 
     // 2. PERSIST TO FIRESTORE IN BACKGROUND (NON-BLOCKING)
-    updateDoc(doc(db, 'leave_requests', requestId), {
+    updateDoc(docRef('leave_requests', requestId), {
       type: newType,
       status: 'aangevraagd'
     }).catch(err => console.warn('Firestore switch leave type failed, updated locally:', err));
@@ -603,14 +618,14 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
     // Async persist in background
     if (docToDelete) {
-      deleteDoc(doc(db, 'leave_requests', docToDelete))
+      deleteDoc(docRef('leave_requests', docToDelete))
         .catch(err => console.warn('Firestore leave delete for shift error:', err));
     }
     if (splitDocToWrite) {
-      setDoc(doc(db, 'leave_requests', (splitDocToWrite as LeaveRequest).id), sanitizeForFirestore(splitDocToWrite))
+      setDoc(docRef('leave_requests', (splitDocToWrite as LeaveRequest).id), sanitizeForFirestore(splitDocToWrite))
         .catch(err => console.warn('Firestore split leave error:', err));
     }
-    setDoc(doc(db, 'leave_config', `override_${overrideKey}`), {
+    setDoc(docRef('leave_config', `override_${overrideKey}`), {
       staffId,
       date,
       slot,
@@ -634,7 +649,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       if (note !== undefined) {
         payload.note = note;
       }
-      await updateDoc(doc(db, 'leave_requests', requestId), payload);
+      await updateDoc(docRef('leave_requests', requestId), payload);
     } catch (err) {
       console.warn('Firestore update leave status failed, updated locally:', err);
     }
@@ -650,7 +665,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     });
 
     try {
-      await updateDoc(doc(db, 'leave_requests', requestId), { note });
+      await updateDoc(docRef('leave_requests', requestId), { note });
     } catch (err) {
       console.warn('Firestore update leave note failed, updated locally:', err);
     }
@@ -666,7 +681,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     });
 
     try {
-      await deleteDoc(doc(db, 'leave_requests', requestId));
+      await deleteDoc(docRef('leave_requests', requestId));
     } catch (err) {
       console.warn('Firestore delete leave request failed, updated locally:', err);
     }
@@ -685,7 +700,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       const batch = writeBatch(db);
       const pending = leaveRequests.filter(r => r.status === 'aangevraagd');
       pending.forEach(r => {
-        batch.update(doc(db, 'leave_requests', r.id), { status: 'goedgekeurd' });
+        batch.update(docRef('leave_requests', r.id), { status: 'goedgekeurd' });
       });
       await batch.commit();
     } catch (err) {
@@ -730,7 +745,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
     // 3. Persist to Firestore
     try {
-      await updateDoc(doc(db, 'leave_staff', staffId), {
+      await updateDoc(docRef('leave_staff', staffId), {
         schedule: newSchedule
       });
     } catch (err) {
@@ -752,7 +767,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
     try {
-      await setDoc(doc(db, 'leave_staff', newId), newStaff);
+      await setDoc(docRef('leave_staff', newId), newStaff);
       // Synchronize back to activeStaffList if verpleegkundige/staff
       if (newStaff.role === 'verpleegkundige') {
         const newActive: ActiveStaff = {
@@ -760,7 +775,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
           name: newStaff.name,
           role: newStaff.jobTitle || 'Verpleegkundige / Medewerker'
         };
-        await setDoc(doc(db, 'staff', newId), newActive).catch(() => {});
+        await setDoc(docRef('staff', newId), newActive).catch(() => {});
         if (activeStaffList && onUpdateStaff) {
           onUpdateStaff([...activeStaffList, newActive]);
         }
@@ -779,13 +794,13 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
     try {
-      await updateDoc(doc(db, 'leave_staff', staffId), updates);
+      await updateDoc(docRef('leave_staff', staffId), updates);
       // Synchronize back to staff collection if name or jobTitle changed
       if (updates.name || updates.jobTitle) {
         const staffUpdates: Partial<ActiveStaff> = {};
         if (updates.name) staffUpdates.name = updates.name;
         if (updates.jobTitle) staffUpdates.role = updates.jobTitle;
-        await updateDoc(doc(db, 'staff', staffId), staffUpdates).catch(() => {});
+        await updateDoc(docRef('staff', staffId), staffUpdates).catch(() => {});
         if (activeStaffList && onUpdateStaff) {
           onUpdateStaff(activeStaffList.map(s => s.id === staffId ? { ...s, ...staffUpdates } : s));
         }
@@ -800,12 +815,12 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     const batch = writeBatch(db);
 
     // 1. Delete leave_staff doc AND staff doc
-    batch.delete(doc(db, 'leave_staff', staffId));
-    batch.delete(doc(db, 'staff', staffId));
+    batch.delete(docRef('leave_staff', staffId));
+    batch.delete(docRef('staff', staffId));
 
     // 2. Delete all leave requests for this staff
     const reqSnap = await getDocs(
-      query(collection(db, 'leave_requests'), where('staff_id', '==', staffId))
+      query(col('leave_requests'), where('staff_id', '==', staffId))
     );
     reqSnap.forEach(d => {
       batch.delete(d.ref);
@@ -813,7 +828,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
     // 3. Delete all comments authored by this staff
     const comSnap = await getDocs(
-      query(collection(db, 'leave_comments'), where('author_id', '==', staffId))
+      query(col('leave_comments'), where('author_id', '==', staffId))
     );
     comSnap.forEach(d => {
       batch.delete(d.ref);
@@ -882,6 +897,33 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     } finally {
       setIsBackingUp(false);
       setTimeout(() => setBackupFeedback(null), 4000);
+    }
+  };
+
+  // --- Restore Leave Requests from Backup (Protected by PIN in BackupRestoreModal) ---
+  const handleRestoreLeaveRequests = async (restored: LeaveRequest[]) => {
+    // 1. Optimistic update
+    setLeaveRequests(restored);
+    try {
+      localStorage.setItem('derm_leave_requests_store', JSON.stringify(restored));
+    } catch (e) {}
+
+    // 2. Overwrite in Firestore
+    try {
+      const snap = await getDocs(col('leave_requests'));
+      const batch = writeBatch(db);
+      snap.forEach(d => {
+        batch.delete(d.ref);
+      });
+      restored.forEach(item => {
+        const ref = docRef('leave_requests', item.id);
+        batch.set(ref, sanitizeForFirestore(item));
+      });
+      await batch.commit();
+      setBackupFeedback(`Succesvol overgestapt: ${restored.length} verlofaanvragen hersteld.`);
+    } catch (err: any) {
+      console.error('Fout bij herstellen verlofaanvragen:', err);
+      throw err;
     }
   };
 
@@ -985,7 +1027,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
           </button>
         </div>
 
-        {/* Google Sheets Backup Trigger */}
+        {/* Google Sheets Backup & Excel Export */}
         <div className="flex items-center gap-2 shrink-0">
           {backupFeedback && (
             <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg flex items-center gap-1">
@@ -993,16 +1035,37 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
               {backupFeedback}
             </span>
           )}
+
+          <button
+            type="button"
+            onClick={() => downloadLeaveCsv(staffList, leaveRequests)}
+            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0"
+            title="Download chronologische lijst van geplande en aangevraagde verloven als Excel CSV"
+          >
+            <Download className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Excel Export</span>
+          </button>
+
           <button
             type="button"
             onClick={handleTriggerSheetsBackup}
             disabled={isBackingUp}
             className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0 disabled:opacity-50"
-            title="Direct handmatig backuppen naar Google Sheets"
+            title="Direct synchroniseren naar Google Sheets (chronologische lijst van verloven)"
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
             <RefreshCw className={`w-3 h-3 ${isBackingUp ? 'animate-spin' : ''}`} />
             <span>{isBackingUp ? 'Bezig...' : 'Sheets Backup'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowRestoreModal(true)}
+            className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0"
+            title="Overstappen naar een eerdere backup van de verlofplanning (PIN bevestiging vereist)"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+            <span>Overstappen naar Backup</span>
           </button>
         </div>
       </div>
@@ -1026,8 +1089,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
           onDirectSetLeave={handleDirectSetLeave}
           onDirectCancelLeave={handleDirectCancelLeave}
           onDirectSwitchLeaveType={handleDirectSwitchLeaveType}
-          onDirectSetShiftStatus={handleDirectSetShiftStatus}
-          onUpdateStaffSchedule={handleUpdateStaffSchedule}
+          onUpdateLeaveStatus={handleUpdateLeaveStatus}
         />
       )}
 
@@ -1058,7 +1120,6 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
           onUpdateNote={handleUpdateLeaveNote}
           onDeleteRequest={handleDeleteLeaveRequest}
           onBatchApproveAllPending={handleBatchApproveAllPending}
-          onUpdateStaffSchedule={handleUpdateStaffSchedule}
         />
       )}
 
@@ -1089,6 +1150,19 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
           onCascadeDeleteStaffMember={handleCascadeDeleteStaffMember}
         />
       )}
+
+      {/* Backup Restore Modal (PIN Protected) */}
+      <BackupRestoreModal
+        isOpen={showRestoreModal}
+        onClose={() => setShowRestoreModal(false)}
+        mode="leave"
+        systemConfig={systemConfig || ({} as SystemConfig)}
+        leaveStaffList={staffList}
+        onRestoreLeaveRequests={handleRestoreLeaveRequests}
+        onSuccessMessage={(msg) => {
+          setBackupFeedback(msg);
+        }}
+      />
     </div>
   );
 };

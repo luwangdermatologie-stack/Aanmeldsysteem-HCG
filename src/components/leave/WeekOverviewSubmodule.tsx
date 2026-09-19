@@ -11,13 +11,14 @@ import {
   TodoItem,
   LeaveSlot,
   LeaveType,
-  DayOfWeekKey,
-  WeeklySchedule
+  LeaveStatus,
+  DayOfWeekKey
 } from '../../types';
 import {
   DAYS_OF_WEEK,
   getISOWeekDetails,
-  createDefaultSchedule
+  calculateCompulsoryLeaveCounter,
+  validateLeaveRequest
 } from '../../services/leaveService';
 import {
   ChevronLeft,
@@ -38,8 +39,7 @@ import {
   X,
   Sparkles,
   ArrowRightLeft,
-  CalendarDays,
-  RefreshCw
+  Briefcase
 } from 'lucide-react';
 
 interface WeekOverviewSubmoduleProps {
@@ -57,8 +57,7 @@ interface WeekOverviewSubmoduleProps {
   onDirectSetLeave: (staffId: string, staffName: string, date: string, slot: LeaveSlot, type: LeaveType) => Promise<void>;
   onDirectCancelLeave: (requestId: string) => Promise<void>;
   onDirectSwitchLeaveType?: (requestId: string, newType: LeaveType) => Promise<void>;
-  onDirectSetShiftStatus?: (staffId: string, date: string, slot: 'VM' | 'NM', status: 'dienst' | 'vrij') => Promise<void>;
-  onUpdateStaffSchedule?: (staffId: string, newSchedule: WeeklySchedule) => Promise<void>;
+  onUpdateLeaveStatus?: (requestId: string, newStatus: LeaveStatus) => Promise<void>;
 }
 
 export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
@@ -76,8 +75,7 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
   onDirectSetLeave,
   onDirectCancelLeave,
   onDirectSwitchLeaveType,
-  onDirectSetShiftStatus,
-  onUpdateStaffSchedule
+  onUpdateLeaveStatus
 }) => {
   // Current view date anchored on selected week
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -115,6 +113,7 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
     isScheduled: boolean;
     isOverridden?: boolean;
   } | null>(null);
+
 
   // Calculate week details
   const weekInfo = useMemo(() => getISOWeekDetails(currentDate), [currentDate]);
@@ -157,6 +156,7 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
   // Separate staff into doctors and nurses
   const doctors = useMemo(() => staffList.filter(s => s.role === 'arts'), [staffList]);
   const nurses = useMemo(() => staffList.filter(s => s.role === 'verpleegkundige'), [staffList]);
+
 
   // Submit comment
   const handlePostComment = async (e: React.FormEvent) => {
@@ -205,6 +205,7 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
     }
   };
 
+
   // Check slot status for a staff member on a specific day
   const getSlotStatus = (staff: StaffMember, dayKey: DayOfWeekKey, dateStr: string, slot: 'vm' | 'nm') => {
     const overrideKey = `${staff.id}_${dateStr}_${slot}`;
@@ -223,9 +224,8 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
       return false;
     });
 
-    // Direct synchronization with fixed schedule:
-    // If not scheduled (e.g. employee has a fixed free day/half-day), they are already free
-    const effectiveLeaveRequest = isScheduled ? req : undefined;
+    // If leave request is gecompenseerd, it applies even when originally free (it's an extra moment to work!)
+    const effectiveLeaveRequest = (isScheduled || req?.type === 'gecompenseerd') ? req : undefined;
 
     return {
       isScheduled,
@@ -259,7 +259,11 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
       let vmNurses = 0;
       nurses.forEach(nurse => {
         const status = getSlotStatus(nurse, d.dayKey, d.dateStr, 'vm');
-        if (status.isScheduled && !status.leaveRequest) {
+        // A nurse is working if scheduled without leave OR if working an approved gecompenseerde werkdag
+        const isWorking =
+          (status.isScheduled && (!status.leaveRequest || (status.leaveRequest.type === 'gecompenseerd' && status.leaveRequest.status === 'goedgekeurd'))) ||
+          (!status.isScheduled && status.leaveRequest?.type === 'gecompenseerd' && status.leaveRequest.status === 'goedgekeurd');
+        if (isWorking) {
           vmNurses++;
         }
       });
@@ -276,7 +280,10 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
       let nmNurses = 0;
       nurses.forEach(nurse => {
         const status = getSlotStatus(nurse, d.dayKey, d.dateStr, 'nm');
-        if (status.isScheduled && !status.leaveRequest) {
+        const isWorking =
+          (status.isScheduled && (!status.leaveRequest || (status.leaveRequest.type === 'gecompenseerd' && status.leaveRequest.status === 'goedgekeurd'))) ||
+          (!status.isScheduled && status.leaveRequest?.type === 'gecompenseerd' && status.leaveRequest.status === 'goedgekeurd');
+        if (isWorking) {
           nmNurses++;
         }
       });
@@ -317,8 +324,6 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
     // 2. Perform removal/reset
     if (target.currentLeave?.id) {
       onDirectCancelLeave(target.currentLeave.id).catch(err => console.warn('Cancel leave action error:', err));
-    } else if (onDirectSetShiftStatus) {
-      onDirectSetShiftStatus(target.staff.id, target.dateStr, target.slot, 'dienst').catch(err => console.warn('Set shift status error:', err));
     }
   };
 
@@ -334,48 +339,6 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
       onDirectCancelLeave(target.currentLeave.id)
         .then(() => onDirectSetLeave(target.staff.id, target.staff.name, target.dateStr, target.slot, newType))
         .catch(err => console.warn('Switch leave type fallback error:', err));
-    }
-  };
-
-  // Set shift directly to Dienst or Vrij: INSTANT MODAL CLOSE
-  const handleApplySetShiftStatus = (status: 'dienst' | 'vrij', wholeDay = false) => {
-    if (!activeQuickSlot) return;
-    const target = activeQuickSlot;
-    // 1. Instantly close modal synchronously
-    setActiveQuickSlot(null);
-    if (target.currentLeave?.id) {
-      onDirectCancelLeave(target.currentLeave.id).catch(err => console.warn('Cancel leave error:', err));
-    }
-    if (onDirectSetShiftStatus) {
-      if (wholeDay) {
-        onDirectSetShiftStatus(target.staff.id, target.dateStr, 'VM', status).catch(err => console.warn('Set VM error:', err));
-        onDirectSetShiftStatus(target.staff.id, target.dateStr, 'NM', status).catch(err => console.warn('Set NM error:', err));
-      } else {
-        onDirectSetShiftStatus(target.staff.id, target.dateStr, target.slot, status).catch(err => console.warn('Set shift status error:', err));
-      }
-    }
-  };
-
-  // Permanently update fixed schedule directly from Weekoverzicht (Direct Synchronization)
-  const handleApplyPermanentFixedSchedule = async (newActiveState: boolean) => {
-    if (!activeQuickSlot || !onUpdateStaffSchedule) return;
-    const target = activeQuickSlot;
-    setActiveQuickSlot(null);
-
-    const currentSched = target.staff.schedule || createDefaultSchedule();
-    const slotKey = target.slot.toLowerCase() as 'vm' | 'nm';
-    const updatedSchedule: WeeklySchedule = {
-      ...currentSched,
-      [target.dayKey]: {
-        ...(currentSched[target.dayKey] || { vm: false, nm: false }),
-        [slotKey]: newActiveState
-      }
-    };
-
-    try {
-      await onUpdateStaffSchedule(target.staff.id, updatedSchedule);
-    } catch (err) {
-      console.error('Fout bij synchroniseren van vast werkschema:', err);
     }
   };
 
@@ -699,11 +662,6 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
 
         {/* Ratio Rule Explanation Badge & Datepicker Jump */}
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px] font-semibold flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>Vaste schema's <strong>gesynchroniseerd</strong> met weekrooster</span>
-          </div>
-
           <div className="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-semibold flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
             <span>Bezetting: Minimaal <strong>1 verpleegkundige per arts</strong> per dagdeel</span>
@@ -725,7 +683,7 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
       {/* 3. HET WEEKROOSTER MET DIRECT VERLOF INSTELLEN & RATIO ALERTS (ROOD) */}
       {/* ========================================================================= */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        {/* Table Legend */}
+        {/* Table Legend & Actions */}
         <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3 text-xs">
           <div className="flex items-center gap-4 flex-wrap">
             <span className="font-bold text-slate-700 text-xs">Legende:</span>
@@ -748,6 +706,14 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded bg-amber-100 border border-amber-400"></span>
               <span className="text-slate-600 text-[11px]">Verplicht (Goedgekeurd)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded bg-teal-50 border-2 border-dashed border-teal-500"></span>
+              <span className="text-slate-600 text-[11px]">Gecompenseerd (In Aanvr)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded bg-teal-100 border border-teal-500"></span>
+              <span className="text-slate-600 text-[11px]">Gecompenseerd (Goedgekeurd · -teller)</span>
             </div>
           </div>
         </div>
@@ -1033,18 +999,26 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className={`px-2.5 py-1 rounded-lg font-bold border text-xs ${
-                      activeQuickSlot.currentLeave.type === 'verplicht'
+                      activeQuickSlot.currentLeave.type === 'gecompenseerd'
+                        ? 'bg-teal-100 text-teal-950 border-teal-300'
+                        : activeQuickSlot.currentLeave.type === 'verplicht'
                         ? 'bg-amber-100 text-amber-900 border-amber-300'
                         : 'bg-indigo-100 text-indigo-900 border-indigo-300'
                     }`}>
-                      {activeQuickSlot.currentLeave.type === 'verplicht' ? 'Verplicht Verlof' : 'Regulier Verlof'}
+                      {activeQuickSlot.currentLeave.type === 'gecompenseerd'
+                        ? '💼 Compensatiedag'
+                        : activeQuickSlot.currentLeave.type === 'verplicht'
+                        ? 'Verplicht Verlof'
+                        : 'Regulier Verlof'}
                     </span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
                       activeQuickSlot.currentLeave.status === 'goedgekeurd'
                         ? 'bg-emerald-100 text-emerald-800'
                         : 'bg-amber-100 text-amber-800 border border-amber-200'
                     }`}>
-                      {activeQuickSlot.currentLeave.status === 'goedgekeurd' ? 'Goedgekeurd' : 'In Aanvraag'}
+                      {activeQuickSlot.currentLeave.status === 'goedgekeurd'
+                        ? (activeQuickSlot.currentLeave.type === 'gecompenseerd' ? 'Goedgekeurd (-teller)' : 'Goedgekeurd')
+                        : 'In Aanvraag'}
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-500 font-semibold">
@@ -1064,115 +1038,171 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
               )}
             </div>
 
-            {/* In Aanvraag Info banner */}
-            <div className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-[11px] font-medium flex items-center gap-2">
-              <Clock className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-              <span>Gekozen actie wordt onmiddellijk toegepast en het venster sluit direct.</span>
-            </div>
-
             {/* Action Buttons */}
             <div className="space-y-2 pt-1">
               {activeQuickSlot.currentLeave ? (
-                /* Currently on Leave -> Switch Type, Cancel to Dienst, or Set to Vrij */
+                /* Currently on Leave / Gecompenseerd -> Actions */
                 <div className="space-y-2">
-                  <span className="text-xs font-bold text-slate-700 block">Kies actie voor dit verlof:</span>
+                  <span className="text-xs font-bold text-slate-700 block">Kies actie voor deze status:</span>
 
-                  {/* Switch to Regulier */}
-                  {activeQuickSlot.currentLeave.type === 'verplicht' && (
-                    <button
-                      type="button"
-                      onClick={() => handleApplySwitchType('regulier')}
-                      className="w-full p-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-400 text-indigo-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0">
-                          <ShieldCheck className="w-4 h-4" />
+                  {/* If this is a Gecompenseerde Werkdag */}
+                  {activeQuickSlot.currentLeave.type === 'gecompenseerd' ? (
+                    <>
+                      {/* Approve button if pending */}
+                      {activeQuickSlot.currentLeave.status === 'aangevraagd' && onUpdateLeaveStatus && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const reqId = activeQuickSlot.currentLeave!.id;
+                            setActiveQuickSlot(null);
+                            onUpdateLeaveStatus(reqId, 'goedgekeurd');
+                          }}
+                          className="w-full p-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-between transition cursor-pointer group shadow-2xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-teal-800 text-white flex items-center justify-center font-bold shrink-0">
+                              <Check className="w-4 h-4" />
+                            </div>
+                            <div className="text-left">
+                              <span className="font-extrabold text-xs block">
+                                Aanvraag Goedkeuren (-{activeQuickSlot.currentLeave.units}d teller)
+                              </span>
+                              <span className="text-[11px] text-teal-100">
+                                Keurt extra werkdag goed & trekt af van teller
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-xs font-bold text-teal-100 shrink-0">Goedkeuren →</span>
+                        </button>
+                      )}
+
+                      {/* Cancel / Withdraw Gecompenseerde Werkdag */}
+                      <button
+                        type="button"
+                        onClick={handleApplyCancelLeave}
+                        className="w-full p-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 hover:border-rose-400 text-rose-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center font-bold shrink-0">
+                            <X className="w-4 h-4" />
+                          </div>
+                          <div className="text-left">
+                            <span className="font-extrabold text-xs block">
+                              {activeQuickSlot.currentLeave.status === 'aangevraagd'
+                                ? 'Aanvraag Intrekken / Verwijderen'
+                                : 'Compensatiedag Annuleren'}
+                            </span>
+                            <span className="text-[11px] text-rose-700/80">
+                              Verwijdert deze compensatiedag en herstelt de verplicht verlof teller
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-left">
-                          <span className="font-extrabold text-xs block">
-                            Aanpassen naar Regulier Verlof
-                          </span>
-                          <span className="text-[11px] text-indigo-700/80">
-                            Wijzigt type naar regulier
-                          </span>
+                        <span className="text-xs font-bold text-rose-700 shrink-0">Verwijderen →</span>
+                      </button>
+                    </>
+                  ) : (
+                    /* Normal Leave (Regulier or Verplicht) */
+                    <>
+                      {/* Switch to Regulier */}
+                      {activeQuickSlot.currentLeave.type === 'verplicht' && (
+                        <button
+                          type="button"
+                          onClick={() => handleApplySwitchType('regulier')}
+                          className="w-full p-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-400 text-indigo-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0">
+                              <ShieldCheck className="w-4 h-4" />
+                            </div>
+                            <div className="text-left">
+                              <span className="font-extrabold text-xs block">
+                                Aanpassen naar Regulier Verlof
+                              </span>
+                              <span className="text-[11px] text-indigo-700/80">
+                                Wijzigt type naar regulier
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-xs font-bold text-indigo-600 shrink-0">Toepassen →</span>
+                        </button>
+                      )}
+
+                      {/* Switch to Verplicht (only nurses) */}
+                      {activeQuickSlot.currentLeave.type === 'regulier' && activeQuickSlot.staff.role === 'verpleegkundige' && (
+                        <button
+                          type="button"
+                          onClick={() => handleApplySwitchType('verplicht')}
+                          className="w-full p-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 hover:border-amber-400 text-amber-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold shrink-0">
+                              <Sparkles className="w-4 h-4" />
+                            </div>
+                            <div className="text-left">
+                              <span className="font-extrabold text-xs block">
+                                Aanpassen naar Verplicht Verlof
+                              </span>
+                              <span className="text-[11px] text-amber-700/80">
+                                Wijzigt type naar verplicht (+0.5 teller)
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-xs font-bold text-amber-700 shrink-0">Toepassen →</span>
+                        </button>
+                      )}
+
+                      {/* Switch to Gecompenseerd (only nurses) */}
+                      {activeQuickSlot.staff.role === 'verpleegkundige' && (
+                        <button
+                          type="button"
+                          onClick={() => handleApplySwitchType('gecompenseerd')}
+                          className="w-full p-2.5 rounded-xl bg-teal-50 hover:bg-teal-100 border border-teal-200 hover:border-teal-400 text-teal-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-teal-600 text-white flex items-center justify-center font-bold shrink-0">
+                              <Briefcase className="w-4 h-4" />
+                            </div>
+                            <div className="text-left">
+                              <span className="font-extrabold text-xs block">
+                                Aanpassen naar Compensatiedag
+                              </span>
+                              <span className="text-[11px] text-teal-700/80">
+                                Wijzigt type naar compensatiedag (-0.5 teller)
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-xs font-bold text-teal-700 shrink-0">Aanvragen →</span>
+                        </button>
+                      )}
+
+                      {/* Cancel leave and restore Dienst */}
+                      <button
+                        type="button"
+                        onClick={handleApplyCancelLeave}
+                        className="w-full p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 hover:border-emerald-400 text-emerald-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold shrink-0">
+                            <Check className="w-4 h-4" />
+                          </div>
+                          <div className="text-left">
+                            <span className="font-extrabold text-xs block">
+                              Verlof Terugtrekken (Herstel Dienst)
+                            </span>
+                            <span className="text-[11px] text-emerald-700/80">
+                              Verwijdert het verlof en zet medewerker direct weer op dienst
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                      <span className="text-xs font-bold text-indigo-600 shrink-0">Toepassen →</span>
-                    </button>
+                        <span className="text-xs font-bold text-emerald-700 shrink-0">Herstel Dienst →</span>
+                      </button>
+                    </>
                   )}
-
-                  {/* Switch to Verplicht (only nurses) */}
-                  {activeQuickSlot.currentLeave.type === 'regulier' && activeQuickSlot.staff.role === 'verpleegkundige' && (
-                    <button
-                      type="button"
-                      onClick={() => handleApplySwitchType('verplicht')}
-                      className="w-full p-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 hover:border-amber-400 text-amber-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold shrink-0">
-                          <Sparkles className="w-4 h-4" />
-                        </div>
-                        <div className="text-left">
-                          <span className="font-extrabold text-xs block">
-                            Aanpassen naar Verplicht Verlof
-                          </span>
-                          <span className="text-[11px] text-amber-700/80">
-                            Wijzigt type naar verplicht (+0.5 teller)
-                          </span>
-                        </div>
-                      </div>
-                      <span className="text-xs font-bold text-amber-700 shrink-0">Toepassen →</span>
-                    </button>
-                  )}
-
-                  {/* Cancel leave and restore Dienst */}
-                  <button
-                    type="button"
-                    onClick={handleApplyCancelLeave}
-                    className="w-full p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 hover:border-emerald-400 text-emerald-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold shrink-0">
-                        <Check className="w-4 h-4" />
-                      </div>
-                      <div className="text-left">
-                        <span className="font-extrabold text-xs block">
-                          Verlof Terugtrekken (Herstel Dienst)
-                        </span>
-                        <span className="text-[11px] text-emerald-700/80">
-                          Verwijdert het verlof en zet medewerker direct weer op dienst
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-emerald-700 shrink-0">Herstel Dienst →</span>
-                  </button>
-
-                  {/* Set to Vrij */}
-                  <button
-                    type="button"
-                    onClick={() => handleApplySetShiftStatus('vrij')}
-                    className="w-full p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 flex items-center justify-between transition cursor-pointer group shadow-2xs"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-slate-600 text-white flex items-center justify-center font-bold shrink-0">
-                        —
-                      </div>
-                      <div className="text-left">
-                        <span className="font-extrabold text-xs block">
-                          Roosteren als Vrij (Niet Ingeroosterd)
-                        </span>
-                        <span className="text-[11px] text-slate-600">
-                          Verwijdert verlof en markeert als vrijaf
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-slate-700 shrink-0">Zet op Vrij →</span>
-                  </button>
                 </div>
               ) : activeQuickSlot.isScheduled ? (
-                /* Currently on Dienst -> Give Leave Options or Set to Vrij */
+                /* Currently on Dienst -> Give Leave Options */
                 <div className="space-y-2">
-                  <span className="text-xs font-bold text-slate-700 block">Vervang dienst naar verlof of vrij:</span>
+                  <span className="text-xs font-bold text-slate-700 block">Vervang dienst door verlof:</span>
                   
                   {/* Button 1: Regulier Verlof (Dit dagdeel) */}
                   <button
@@ -1188,12 +1218,9 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                         <span className="font-extrabold text-xs block group-hover:text-indigo-900">
                           Regulier Verlof ({activeQuickSlot.slot} · 0.5 dag)
                         </span>
-                        <span className="text-[11px] text-indigo-700/80">
-                          Alleen voor dagdeel {activeQuickSlot.slot}
-                        </span>
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-indigo-600 shrink-0">Toekennen →</span>
+                    <span className="text-xs font-bold text-indigo-600 shrink-0">Aanvragen →</span>
                   </button>
 
                   {/* Button 1b: Regulier Verlof (Hele dag) */}
@@ -1210,12 +1237,9 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                         <span className="font-extrabold text-xs block group-hover:text-indigo-900">
                           Regulier Verlof (Hele Dag · 1.0 dag)
                         </span>
-                        <span className="text-[11px] text-indigo-700/80">
-                          Zowel VM als NM direct vervangen door verlof
-                        </span>
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-indigo-600 shrink-0">Hele Dag →</span>
+                    <span className="text-xs font-bold text-indigo-600 shrink-0">Aanvragen →</span>
                   </button>
 
                   {/* Button 2: Verplicht Verlof (Only for nurses) */}
@@ -1234,12 +1258,9 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                             <span className="font-extrabold text-xs block group-hover:text-amber-900">
                               Verplicht Verlof ({activeQuickSlot.slot} · 0.5 dag)
                             </span>
-                            <span className="text-[11px] text-amber-700/80">
-                              Alleen dagdeel {activeQuickSlot.slot} (+0.5 teller)
-                            </span>
                           </div>
                         </div>
-                        <span className="text-xs font-bold text-amber-700 shrink-0">Toekennen →</span>
+                        <span className="text-xs font-bold text-amber-700 shrink-0">Aanvragen →</span>
                       </button>
 
                       <button
@@ -1255,12 +1276,9 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                             <span className="font-extrabold text-xs block group-hover:text-amber-900">
                               Verplicht Verlof (Hele Dag · 1.0 dag)
                             </span>
-                            <span className="text-[11px] text-amber-700/80">
-                              Zowel VM als NM verplicht (+1.0 teller)
-                            </span>
                           </div>
                         </div>
-                        <span className="text-xs font-bold text-amber-700 shrink-0">Hele Dag →</span>
+                        <span className="text-xs font-bold text-amber-700 shrink-0">Aanvragen →</span>
                       </button>
                     </>
                   ) : (
@@ -1268,55 +1286,11 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                       <em>Artsen kunnen volgens praktijkprotocol enkel Regulier verlof opnemen.</em>
                     </div>
                   )}
-
-                  {/* Button 3: Set to Vrij */}
-                  <button
-                    type="button"
-                    onClick={() => handleApplySetShiftStatus('vrij')}
-                    className="w-full p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 flex items-center justify-between transition cursor-pointer group shadow-2xs"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-slate-600 text-white flex items-center justify-center font-bold shrink-0">
-                        —
-                      </div>
-                      <div className="text-left">
-                        <span className="font-extrabold text-xs block">
-                          Roosteren als Vrij (Niet Ingeroosterd)
-                        </span>
-                        <span className="text-[11px] text-slate-600">
-                          Zet status op vrijaf i.p.v. ingeroosterd
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-slate-700 shrink-0">Zet op Vrij →</span>
-                  </button>
                 </div>
               ) : (
-                /* Currently Vrij -> Schedule Dienst or Direct Leave */
+                /* Currently Vrij -> Direct Leave or Extra Work */
                 <div className="space-y-2">
                   <span className="text-xs font-bold text-slate-700 block">Kies actie voor dit vrije moment:</span>
-
-                  {/* Schedule Dienst */}
-                  <button
-                    type="button"
-                    onClick={() => handleApplySetShiftStatus('dienst')}
-                    className="w-full p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 hover:border-emerald-400 text-emerald-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold shrink-0">
-                        <Check className="w-4 h-4" />
-                      </div>
-                      <div className="text-left">
-                        <span className="font-extrabold text-xs block">
-                          Dienst Inplannen ({activeQuickSlot.slot})
-                        </span>
-                        <span className="text-[11px] text-emerald-700/80">
-                          Zet medewerker direct op dienst voor {activeQuickSlot.slot}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-emerald-700 shrink-0">Inplannen →</span>
-                  </button>
 
                   {/* Regulier Verlof */}
                   <button
@@ -1332,12 +1306,9 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                         <span className="font-extrabold text-xs block">
                           Regulier Verlof ({activeQuickSlot.slot} · 0.5 dag)
                         </span>
-                        <span className="text-[11px] text-indigo-700/80">
-                          Direct toekennen als verlof
-                        </span>
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-indigo-600 shrink-0">Toekennen →</span>
+                    <span className="text-xs font-bold text-indigo-600 shrink-0">Aanvragen →</span>
                   </button>
 
                   {/* Verplicht Verlof (nurses only) */}
@@ -1355,60 +1326,55 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                           <span className="font-extrabold text-xs block">
                             Verplicht Verlof ({activeQuickSlot.slot} · 0.5 dag)
                           </span>
-                          <span className="text-[11px] text-amber-700/80">
-                            Direct toekennen (+0.5 teller)
-                          </span>
                         </div>
                       </div>
-                      <span className="text-xs font-bold text-amber-700 shrink-0">Toekennen →</span>
+                      <span className="text-xs font-bold text-amber-700 shrink-0">Aanvragen →</span>
                     </button>
+                  )}
+
+                  {/* Compensatiedag (nurses only) */}
+                  {activeQuickSlot.staff.role === 'verpleegkundige' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyDirectLeave('gecompenseerd', activeQuickSlot.slot)}
+                        className="w-full p-2.5 rounded-xl bg-teal-50 hover:bg-teal-100 border border-teal-200 hover:border-teal-400 text-teal-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-teal-600 text-white flex items-center justify-center font-bold shrink-0">
+                            <Briefcase className="w-4 h-4" />
+                          </div>
+                          <div className="text-left">
+                            <span className="font-extrabold text-xs block group-hover:text-teal-900">
+                              Compensatiedag ({activeQuickSlot.slot} · 0.5 dag)
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-xs font-bold text-teal-700 shrink-0">Aanvragen →</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleApplyDirectLeave('gecompenseerd', 'HELE_DAG')}
+                        className="w-full p-2.5 rounded-xl bg-teal-50/70 hover:bg-teal-100/90 border border-teal-200 hover:border-teal-400 text-teal-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-teal-700 text-white flex items-center justify-center font-bold shrink-0">
+                            <Briefcase className="w-4 h-4" />
+                          </div>
+                          <div className="text-left">
+                            <span className="font-extrabold text-xs block group-hover:text-teal-900">
+                              Compensatiedag (Hele Dag · 1.0 dag)
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-xs font-bold text-teal-700 shrink-0">Aanvragen →</span>
+                      </button>
+                    </>
                   )}
                 </div>
               )}
             </div>
-
-            {/* VAST WERKSCHEMA DIRECTE SYNCHRONISATIE */}
-            {onUpdateStaffSchedule && (
-              <div className="pt-2 border-t border-slate-100">
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                      <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
-                      Vast Werkschema ({activeQuickSlot.dayLabel} {activeQuickSlot.slot})
-                    </span>
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
-                      (activeQuickSlot.staff.schedule?.[activeQuickSlot.dayKey]?.[activeQuickSlot.slot.toLowerCase() as 'vm' | 'nm'])
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-slate-200 text-slate-700'
-                    }`}>
-                      {(activeQuickSlot.staff.schedule?.[activeQuickSlot.dayKey]?.[activeQuickSlot.slot.toLowerCase() as 'vm' | 'nm'])
-                        ? 'Standaard Ingeroosterd'
-                        : 'Standaard Vrij'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 leading-tight">
-                    Elke wijziging hier wordt direct live gesynchroniseerd met het vaste werkschema van {activeQuickSlot.staff.name}.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const isCurrentlyActive = Boolean(
-                        activeQuickSlot.staff.schedule?.[activeQuickSlot.dayKey]?.[activeQuickSlot.slot.toLowerCase() as 'vm' | 'nm']
-                      );
-                      handleApplyPermanentFixedSchedule(!isCurrentlyActive);
-                    }}
-                    className="w-full py-2 px-3 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>
-                      {(activeQuickSlot.staff.schedule?.[activeQuickSlot.dayKey]?.[activeQuickSlot.slot.toLowerCase() as 'vm' | 'nm'])
-                        ? `Permanent op Vrij zetten in vast schema (${activeQuickSlot.dayLabel} ${activeQuickSlot.slot})`
-                        : `Permanent op Dienst zetten in vast schema (${activeQuickSlot.dayLabel} ${activeQuickSlot.slot})`}
-                    </span>
-                  </button>
-                </div>
-              </div>
-            )}
 
             <div className="pt-2 border-t border-slate-100 flex justify-end">
               <button
@@ -1422,6 +1388,8 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
           </div>
         </div>
       )}
+
+
     </div>
   );
 };
@@ -1444,6 +1412,34 @@ const InteractiveSlotCell: React.FC<InteractiveSlotCellProps> = ({ status, staff
     const isApproved = leaveRequest.status === 'goedgekeurd';
     const isPending = leaveRequest.status === 'aangevraagd';
     const isCompulsory = leaveRequest.type === 'verplicht';
+    const isCompensated = leaveRequest.type === 'gecompenseerd';
+
+    if (isCompensated) {
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          title={`Gecompenseerde Werkdag (${isApproved ? 'Goedgekeurd · -0.5d teller' : 'In Aanvraag'}). Klik om te beheren of goed te keuren.`}
+          className={`w-full h-9 rounded-lg flex flex-col items-center justify-center p-0.5 shadow-2xs transition cursor-pointer group ${
+            isPending
+              ? 'bg-teal-50 hover:bg-teal-100 border-2 border-dashed border-teal-500 text-teal-950'
+              : 'bg-teal-100 hover:bg-teal-200/90 border border-teal-400 text-teal-950'
+          }`}
+        >
+          <div className="flex items-center gap-1">
+            <Briefcase className="w-3 h-3 text-teal-700 group-hover:scale-110 transition-transform" />
+            {isPending ? (
+              <Clock className="w-2.5 h-2.5 text-teal-600" />
+            ) : (
+              <Check className="w-2.5 h-2.5 text-teal-700 stroke-[3]" />
+            )}
+          </div>
+          <span className="text-[9px] font-black leading-none mt-0.5 text-teal-900">
+            {isPending ? 'Gecomp. (Aanvr)' : 'Gecomp.'}
+          </span>
+        </button>
+      );
+    }
 
     if (isCompulsory) {
       return (

@@ -11,13 +11,11 @@ import {
   TodoItem,
   LeaveSlot,
   LeaveStatus,
-  DayOfWeekKey,
-  WeeklySchedule
+  DayOfWeekKey
 } from '../../types';
 import {
   DAYS_OF_WEEK,
-  getISOWeekDetails,
-  createDefaultSchedule
+  getISOWeekDetails
 } from '../../services/leaveService';
 import {
   ChevronLeft,
@@ -45,7 +43,8 @@ import {
   CalendarDays,
   FileText,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Briefcase
 } from 'lucide-react';
 
 export interface LeaveApprovalSubmoduleProps {
@@ -64,7 +63,6 @@ export interface LeaveApprovalSubmoduleProps {
   onUpdateNote?: (requestId: string, note: string) => Promise<void>;
   onDeleteRequest: (requestId: string) => Promise<void>;
   onBatchApproveAllPending?: () => Promise<void>;
-  onUpdateStaffSchedule?: (staffId: string, newSchedule: WeeklySchedule) => Promise<void>;
 }
 
 interface ActiveApprovalModalState {
@@ -100,8 +98,7 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
   onUpdateStatus,
   onUpdateNote,
   onDeleteRequest,
-  onBatchApproveAllPending,
-  onUpdateStaffSchedule
+  onBatchApproveAllPending
 }) => {
   // Navigation & View State
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -386,33 +383,6 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
     setModalDayCommentText(`[${dayLabel} ${formattedDate}] Verlofbeoordeling ${staff.name}: `);
     setModalCommentAuthorId(staffList[0]?.id || '');
     setModalFeedback(null);
-  };
-
-  // Toggle Fixed Schedule slot directly from Approval Modal
-  const handleToggleFixedScheduleSlot = async (slotType: 'vm' | 'nm', newStatus: boolean) => {
-    if (!activeApprovalSlot || !onUpdateStaffSchedule) return;
-    const target = activeApprovalSlot;
-    const currentSched = target.staff.schedule || createDefaultSchedule();
-    const updatedSchedule: WeeklySchedule = {
-      ...currentSched,
-      [target.dayKey]: {
-        ...(currentSched[target.dayKey] || { vm: false, nm: false }),
-        [slotType]: newStatus
-      }
-    };
-    try {
-      await onUpdateStaffSchedule(target.staff.id, updatedSchedule);
-      // Update local modal state
-      setActiveApprovalSlot(prev => prev ? ({
-        ...prev,
-        daySchedule: {
-          ...prev.daySchedule,
-          [slotType]: newStatus
-        }
-      }) : null);
-    } catch (err) {
-      console.warn('Sync fixed schedule error:', err);
-    }
   };
 
   // Open Day Action Modal (clicking column header)
@@ -950,14 +920,6 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
               <CheckCircle2 className="w-3 h-3 text-emerald-600" />
               {approvedCount} Goedgekeurd
             </span>
-
-            <span
-              className="px-2 py-0.5 rounded-lg font-bold flex items-center gap-1.5 text-indigo-900 bg-indigo-50 border border-indigo-200 text-[11px]"
-              title="Vaste werkschema's zijn direct gekoppeld met het verlofschema"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
-              <span>Vaste schema's gesynchroniseerd</span>
-            </span>
           </div>
 
           {/* Batch Approve Week */}
@@ -1399,12 +1361,18 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                         <td className="p-3">
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              r.type === 'verplicht'
+                              r.type === 'gecompenseerd'
+                                ? 'bg-teal-50 text-teal-800 border border-teal-300'
+                                : r.type === 'verplicht'
                                 ? 'bg-amber-50 text-amber-800 border border-amber-200'
                                 : 'bg-blue-50 text-blue-800 border border-blue-200'
                             }`}
                           >
-                            {r.type === 'verplicht' ? 'Verplicht verlof' : 'Regulier'} ({r.units}d)
+                            {r.type === 'gecompenseerd'
+                              ? `Gecompenseerd (-${r.units}d)`
+                              : r.type === 'verplicht'
+                              ? `Verplicht verlof (+${r.units}d)`
+                              : `Regulier (${r.units}d)`}
                           </span>
                         </td>
                         <td className="p-3">
@@ -1572,7 +1540,12 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                         )}
 
                         <span className="text-xs font-bold text-slate-600">
-                          {activeApprovalSlot.leaveRequest.type === 'verplicht' ? 'Verplicht verlof' : 'Regulier'} (
+                          {activeApprovalSlot.leaveRequest.type === 'gecompenseerd'
+                            ? 'Gecompenseerde werkdag'
+                            : activeApprovalSlot.leaveRequest.type === 'verplicht'
+                            ? 'Verplicht verlof'
+                            : 'Regulier'}{' '}
+                          ({activeApprovalSlot.leaveRequest.type === 'gecompenseerd' ? '-' : ''}
                           {activeApprovalSlot.leaveRequest.units}d)
                         </span>
                       </div>
@@ -1626,61 +1599,6 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                   <p className="text-xs font-bold text-slate-700 mt-1">
                     Geen actieve verlofaanvraag op dit dagdeel. Medewerker staat ingeroosterd of is vrij.
                   </p>
-                </div>
-              )}
-
-              {/* SECTIE: VAST WERKSCHEMA SYNCHRONISATIE */}
-              {onUpdateStaffSchedule && (
-                <div className="p-3.5 rounded-2xl bg-indigo-50/40 border border-indigo-200/80 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CalendarDays className="w-4 h-4 text-indigo-600" />
-                      <span className="text-xs font-extrabold text-slate-900">
-                        Vast Werkschema ({activeApprovalSlot.dayLabel})
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-semibold text-indigo-600">
-                      Live gesynchroniseerd
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 leading-tight">
-                    Klik op VM of NM om het vaste werkrooster van {activeApprovalSlot.staff.name} op {activeApprovalSlot.dayLabel} aan te passen. Het verlofschema synchroniseert direct.
-                  </p>
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleFixedScheduleSlot('vm', !activeApprovalSlot.daySchedule.vm)}
-                      className={`p-2 rounded-xl text-xs font-bold border transition flex items-center justify-between cursor-pointer ${
-                        activeApprovalSlot.daySchedule.vm
-                          ? 'bg-emerald-100 border-emerald-300 text-emerald-950 hover:bg-emerald-200/70'
-                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span>VM (Voormiddag)</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
-                        activeApprovalSlot.daySchedule.vm ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
-                      }`}>
-                        {activeApprovalSlot.daySchedule.vm ? 'Dienst' : 'Vrij'}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleToggleFixedScheduleSlot('nm', !activeApprovalSlot.daySchedule.nm)}
-                      className={`p-2 rounded-xl text-xs font-bold border transition flex items-center justify-between cursor-pointer ${
-                        activeApprovalSlot.daySchedule.nm
-                          ? 'bg-emerald-100 border-emerald-300 text-emerald-950 hover:bg-emerald-200/70'
-                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span>NM (Namiddag)</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
-                        activeApprovalSlot.daySchedule.nm ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
-                      }`}>
-                        {activeApprovalSlot.daySchedule.nm ? 'Dienst' : 'Vrij'}
-                      </span>
-                    </button>
-                  </div>
                 </div>
               )}
 
@@ -1967,22 +1885,31 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
     const isOnHold = req.status === 'on_hold';
     const isRejected = req.status === 'afgekeurd';
     const isCompulsory = req.type === 'verplicht';
+    const isCompensated = req.type === 'gecompenseerd';
 
     // 1A. PENDING (In Aanvraag) -> Gestreepte rand + 1-klik Goedkeuren (✓) & Afkeuren (✕)
     if (isPending) {
       return (
         <div
           onClick={onClick}
-          title={`In Aanvraag: ${req.type === 'verplicht' ? 'Verplicht' : 'Regulier'} verlof. Klik op ✓ om direct goed te keuren, ✕ om af te keuren, of klik op het vakje voor alle opties.`}
+          title={`In Aanvraag: ${
+            isCompensated
+              ? 'Gecompenseerde Werkdag (-0.5d teller)'
+              : isCompulsory
+              ? 'Verplicht verlof'
+              : 'Regulier verlof'
+          }. Klik op ✓ om direct goed te keuren, ✕ om af te keuren, of klik op het vakje voor alle opties.`}
           className={`w-full min-h-[44px] rounded-lg p-1 flex flex-col items-center justify-between transition cursor-pointer shadow-2xs group relative border-2 border-dashed ${
-            isCompulsory
+            isCompensated
+              ? 'bg-teal-50 hover:bg-teal-100/90 border-teal-500 text-teal-950'
+              : isCompulsory
               ? 'bg-amber-50 hover:bg-amber-100/90 border-amber-400 text-amber-950'
               : 'bg-indigo-50 hover:bg-indigo-100/90 border-indigo-400 text-indigo-950'
           }`}
         >
           <div className="flex items-center justify-between w-full px-0.5">
             <span className="text-[9px] font-black leading-none truncate">
-              {isCompulsory ? 'Verpl.' : 'Verlof'}
+              {isCompensated ? 'Gecomp.' : isCompulsory ? 'Verpl.' : 'Verlof'}
             </span>
             <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0 animate-pulse" />
           </div>
@@ -2064,15 +1991,25 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
       return (
         <div
           onClick={onClick}
-          title={`Goedgekeurd ${req.type === 'verplicht' ? 'Verplicht' : 'Regulier'} verlof. Klik om details te zien of status aan te passen.`}
+          title={`Goedgekeurd ${
+            isCompensated
+              ? 'Gecompenseerde Werkdag (-0.5d teller)'
+              : isCompulsory
+              ? 'Verplicht verlof'
+              : 'Regulier verlof'
+          }. Klik om details te zien of status aan te passen.`}
           className={`w-full min-h-[44px] rounded-lg p-1 flex flex-col items-center justify-center transition cursor-pointer shadow-2xs group relative border ${
-            isCompulsory
+            isCompensated
+              ? 'bg-teal-100 hover:bg-teal-200/90 border-teal-400 text-teal-950'
+              : isCompulsory
               ? 'bg-amber-100 hover:bg-amber-200/90 border-amber-300 text-amber-950'
               : 'bg-indigo-100 hover:bg-indigo-200/90 border-indigo-300 text-indigo-950'
           }`}
         >
           <div className="flex items-center gap-1">
-            {isCompulsory ? (
+            {isCompensated ? (
+              <Briefcase className="w-3 h-3 text-teal-700" />
+            ) : isCompulsory ? (
               <Sparkles className="w-3 h-3 text-amber-700" />
             ) : (
               <ShieldCheck className="w-3 h-3 text-indigo-700" />
@@ -2080,7 +2017,7 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
             <Check className="w-2.5 h-2.5 text-emerald-600 stroke-[3]" />
           </div>
           <span className="text-[9px] font-extrabold leading-none mt-0.5">
-            {isCompulsory ? 'Verpl.' : 'Verlof'}
+            {isCompensated ? 'Gecomp.' : isCompulsory ? 'Verpl.' : 'Verlof'}
           </span>
 
           {/* Snelle actie op hover: direct intrekken / afkeuren */}

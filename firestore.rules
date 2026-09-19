@@ -62,5 +62,46 @@ service cloud.firestore {
     match /leave_config/{configId} {
       allow read, write: if true;
     }
+
+    // ========================================================
+    // TEST ENVIRONMENT COLLECTIONS (Google AI Studio Preview)
+    // Strictly separated from GitHub Production collections
+    // ========================================================
+    match /test_patients/{patientId} {
+      allow read, write: if true;
+    }
+    match /test_doctors/{doctorId} {
+      allow read, write: if true;
+    }
+    match /test_staff/{staffId} {
+      allow read, write: if true;
+    }
+    match /test_config/{configId} {
+      allow read, write: if true;
+    }
+    match /test_notifications/{notificationId} {
+      allow read, write: if true;
+    }
+    match /test_timesheets/{timesheetId} {
+      allow read, write: if true;
+    }
+    match /test_archived_patients/{archiveId} {
+      allow read, write: if true;
+    }
+    match /test_leave_staff/{staffId} {
+      allow read, write: if true;
+    }
+    match /test_leave_requests/{requestId} {
+      allow read, write: if true;
+    }
+    match /test_leave_comments/{commentId} {
+      allow read, write: if true;
+    }
+    match /test_leave_todos/{todoId} {
+      allow read, write: if true;
+    }
+    match /test_leave_config/{configId} {
+      allow read, write: if true;
+    }
   }
 }

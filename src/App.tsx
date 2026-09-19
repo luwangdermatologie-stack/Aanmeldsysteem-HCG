@@ -26,15 +26,14 @@ import {
   Lock,
   Unlock
 } from 'lucide-react';
-import { db, initializeDatabaseIfEmpty, handleFirestoreError, OperationType, sanitizeForFirestore } from './firebase';
-import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, getDocs } from 'firebase/firestore';
+import { db, col, docRef, getDetectedEnvironment, initializeDatabaseIfEmpty, handleFirestoreError, OperationType, sanitizeForFirestore } from './firebase';
+import { setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, getDocs } from 'firebase/firestore';
 
 const INITIAL_DOCTORS: Doctor[] = [
   { id: 'dr-mertens', name: 'Dr. Elisabeth Mertens', specialty: 'Algemene Dermatologie', waitingRoom: 'Gelijkvloers', isAvailable: true, avatarColor: 'bg-teal-500' },
   { id: 'dr-vancamp', name: 'Dr. Jasper Van Camp', specialty: 'Huidkanker & Dermatochirurgie', waitingRoom: 'Bovenverdieping', isAvailable: true, avatarColor: 'bg-rose-500' },
   { id: 'dr-nilsson', name: 'Dr. Linnea Nilsson', specialty: 'Esthetische Dermatologie', waitingRoom: 'Gelijkvloers', isAvailable: true, avatarColor: 'bg-indigo-500' },
-  { id: 'dr-mansour', name: 'Dr. Ahmed Mansour', specialty: 'Kinderdermatologie', waitingRoom: 'Bovenverdieping', isAvailable: true, avatarColor: 'bg-amber-500' },
-  { id: 'nurse-verpleegkundige', name: 'De verpleegkundige', specialty: 'Verpleegkundige zorg & Wondzorg', waitingRoom: 'Gelijkvloers', isAvailable: true, avatarColor: 'bg-emerald-500' }
+  { id: 'dr-mansour', name: 'Dr. Ahmed Mansour', specialty: 'Kinderdermatologie', waitingRoom: 'Bovenverdieping', isAvailable: true, avatarColor: 'bg-amber-500' }
 ];
 
 const INITIAL_STAFF: ActiveStaff[] = [
@@ -327,9 +326,20 @@ export default function App() {
     });
   };
 
+  const [currentEnv, setCurrentEnv] = useState<string>(getDetectedEnvironment());
+
+  useEffect(() => {
+    const handleEnvChange = (e: any) => {
+      const newEnv = e.detail?.environment || getDetectedEnvironment();
+      setCurrentEnv(newEnv);
+    };
+    window.addEventListener('hcg_environment_changed', handleEnvChange);
+    return () => window.removeEventListener('hcg_environment_changed', handleEnvChange);
+  }, []);
+
   // Sync Patients
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'patients'), (snapshot) => {
+    const unsubscribe = onSnapshot(col('patients'), (snapshot) => {
       const patientList: Patient[] = [];
       snapshot.forEach((doc) => {
         patientList.push(doc.data() as Patient);
@@ -341,11 +351,11 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, 'patients');
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentEnv]);
 
   // Sync Timesheets
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'timesheets'), (snapshot) => {
+    const unsubscribe = onSnapshot(col('timesheets'), (snapshot) => {
       const firestoreTs: Timesheet[] = [];
       snapshot.forEach((doc) => {
         firestoreTs.push(doc.data() as Timesheet);
@@ -382,7 +392,7 @@ export default function App() {
         merged.forEach(async (localTs) => {
           if (!remoteIds.has(localTs.id)) {
             try {
-              await setDoc(doc(db, 'timesheets', localTs.id), sanitizeForFirestore(localTs));
+              await setDoc(docRef('timesheets', localTs.id), sanitizeForFirestore(localTs));
             } catch (err) {
               console.warn("Auto-syncing cached timesheet to Firestore:", err);
             }
@@ -395,14 +405,22 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, 'timesheets');
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentEnv]);
 
   // Sync Doctors
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'doctors'), (snapshot) => {
+    const unsubscribe = onSnapshot(col('doctors'), (snapshot) => {
       const doctorsList: Doctor[] = [];
       snapshot.forEach((doc) => {
-        doctorsList.push(doc.data() as Doctor);
+        const d = doc.data() as Doctor;
+        // Strictly ignore and exclude the kiosk placeholder "De verpleegkundige"
+        if (
+          d.id !== 'nurse-verpleegkundige' &&
+          d.name?.toLowerCase().trim() !== 'de verpleegkundige' &&
+          d.name?.toLowerCase().trim() !== 'verpleegkundige'
+        ) {
+          doctorsList.push(d);
+        }
       });
       // Keep doctors in order or sort by id
       doctorsList.sort((a, b) => a.id.localeCompare(b.id));
@@ -411,14 +429,21 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, 'doctors');
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentEnv]);
 
   // Sync Staff
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'staff'), (snapshot) => {
+    const unsubscribe = onSnapshot(col('staff'), (snapshot) => {
       const staffList: ActiveStaff[] = [];
       snapshot.forEach((doc) => {
-        staffList.push(doc.data() as ActiveStaff);
+        const s = doc.data() as ActiveStaff;
+        if (
+          s.id !== 'nurse-verpleegkundige' &&
+          s.name?.toLowerCase().trim() !== 'de verpleegkundige' &&
+          s.name?.toLowerCase().trim() !== 'verpleegkundige'
+        ) {
+          staffList.push(s);
+        }
       });
       staffList.sort((a, b) => a.id.localeCompare(b.id));
       setStaff(staffList);
@@ -426,7 +451,7 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, 'staff');
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentEnv]);
 
   // Automatic Staff Synchronization on initial load between Configuratie & Reset and Verlofplanning
   const initialSyncTriggeredRef = useRef(false);
@@ -441,7 +466,7 @@ export default function App() {
 
   // Sync Config
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'config', 'system'), (snapshot) => {
+    const unsubscribe = onSnapshot(docRef('config', 'system'), (snapshot) => {
       if (snapshot.exists()) {
         setSystemConfig(snapshot.data() as SystemConfig);
       }
@@ -449,11 +474,11 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, 'config/system');
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentEnv]);
 
   // Sync Notifications
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'notifications'), (snapshot) => {
+    const unsubscribe = onSnapshot(col('notifications'), (snapshot) => {
       const notificationsList: TeamsNotification[] = [];
       snapshot.forEach((doc) => {
         notificationsList.push(doc.data() as TeamsNotification);
@@ -464,7 +489,7 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, 'notifications');
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentEnv]);
 
   // Handle register from Kiosk
   const handlePatientRegister = async (newPatientData: Omit<Patient, 'id' | 'arrivalTime' | 'arrivalDate' | 'waitingRoom' | 'status'>) => {
@@ -486,7 +511,7 @@ export default function App() {
     };
 
     try {
-      await setDoc(doc(db, 'patients', fullPatient.id), sanitizeForFirestore(fullPatient));
+      await setDoc(docRef('patients', fullPatient.id), sanitizeForFirestore(fullPatient));
     } catch (err) {
       console.error("Error adding patient to firestore:", err);
     }
@@ -551,7 +576,7 @@ export default function App() {
     }
 
     try {
-      await setDoc(doc(db, 'notifications', newLogItem.id), sanitizeForFirestore(newLogItem));
+      await setDoc(docRef('notifications', newLogItem.id), sanitizeForFirestore(newLogItem));
     } catch (err) {
       console.error("Error adding notification to firestore:", err);
     }
@@ -563,7 +588,7 @@ export default function App() {
   const handleUpdateConfig = async (conf: Partial<SystemConfig>) => {
     try {
       setSystemConfig(prev => ({ ...prev, ...conf }));
-      await updateDoc(doc(db, 'config', 'system'), conf);
+      await updateDoc(docRef('config', 'system'), conf);
     } catch (err) {
       console.error("Error updating system config in firestore:", err);
     }
@@ -572,7 +597,7 @@ export default function App() {
   // Patient manual status transition from table
   const handleUpdatePatientStatus = async (patientId: string, newStatus: Patient['status']) => {
     try {
-      await updateDoc(doc(db, 'patients', patientId), { status: newStatus });
+      await updateDoc(docRef('patients', patientId), { status: newStatus });
     } catch (err) {
       console.error("Error updating patient status in firestore:", err);
     }
@@ -590,7 +615,7 @@ export default function App() {
         const batch = writeBatch(db);
         patients.forEach(p => {
           if (p.status !== 'Archived') {
-            batch.update(doc(db, 'patients', p.id), { status: 'Archived' });
+            batch.update(docRef('patients', p.id), { status: 'Archived' });
           }
         });
         await batch.commit();
@@ -600,12 +625,12 @@ export default function App() {
       doctors.forEach(dr => {
         const newRoom = options.reassignRooms[dr.id];
         if (newRoom) {
-          drBatch.update(doc(db, 'doctors', dr.id), { waitingRoom: newRoom });
+          drBatch.update(docRef('doctors', dr.id), { waitingRoom: newRoom });
         }
       });
       await drBatch.commit();
 
-      await updateDoc(doc(db, 'config', 'system'), {
+      await updateDoc(docRef('config', 'system'), {
         currentDagdeel: options.nextPeriod,
         activeStaffId: options.supportStaffId
       });
@@ -618,7 +643,7 @@ export default function App() {
     try {
       const batch = writeBatch(db);
       notifications.forEach(n => {
-        batch.delete(doc(db, 'notifications', n.id));
+        batch.delete(docRef('notifications', n.id));
       });
       await batch.commit();
     } catch (err) {
@@ -630,13 +655,13 @@ export default function App() {
     try {
       const deleted = doctors.filter(dr => !updatedDoctors.some(u => u.id === dr.id));
       for (const dr of deleted) {
-        await deleteDoc(doc(db, 'doctors', dr.id)).catch(() => {});
-        await deleteDoc(doc(db, 'leave_staff', dr.id)).catch(() => {});
-        await deleteDoc(doc(db, 'leave_staff', `staff-${dr.id}`)).catch(() => {});
+        await deleteDoc(docRef('doctors', dr.id)).catch(() => {});
+        await deleteDoc(docRef('leave_staff', dr.id)).catch(() => {});
+        await deleteDoc(docRef('leave_staff', `staff-${dr.id}`)).catch(() => {});
       }
       const batch = writeBatch(db);
       updatedDoctors.forEach(dr => {
-        batch.set(doc(db, 'doctors', dr.id), dr);
+        batch.set(docRef('doctors', dr.id), dr);
       });
       await batch.commit();
 
@@ -653,12 +678,12 @@ export default function App() {
     try {
       const deleted = staff.filter(st => !updatedStaff.some(u => u.id === st.id));
       for (const st of deleted) {
-        await deleteDoc(doc(db, 'staff', st.id)).catch(() => {});
-        await deleteDoc(doc(db, 'leave_staff', st.id)).catch(() => {});
+        await deleteDoc(docRef('staff', st.id)).catch(() => {});
+        await deleteDoc(docRef('leave_staff', st.id)).catch(() => {});
       }
       const batch = writeBatch(db);
       updatedStaff.forEach(st => {
-        batch.set(doc(db, 'staff', st.id), st);
+        batch.set(docRef('staff', st.id), st);
       });
       await batch.commit();
 
@@ -686,7 +711,7 @@ export default function App() {
 
     // 2. Persist to Firestore database
     try {
-      await setDoc(doc(db, 'timesheets', timesheet.id), sanitizeForFirestore(timesheet));
+      await setDoc(docRef('timesheets', timesheet.id), sanitizeForFirestore(timesheet));
     } catch (err) {
       console.error("Error updating timesheet in firestore:", err);
     }
@@ -706,9 +731,35 @@ export default function App() {
 
     // 2. Delete from Firestore database
     try {
-      await deleteDoc(doc(db, 'timesheets', id));
+      await deleteDoc(docRef('timesheets', id));
     } catch (err) {
       console.error("Error deleting timesheet in firestore:", err);
+    }
+  };
+
+  const handleRestoreTimesheets = async (restoredList: Timesheet[]): Promise<void> => {
+    // 1. Update state & localStorage
+    setTimesheets(restoredList);
+    try {
+      localStorage.setItem('derm_timesheets_store', JSON.stringify(restoredList));
+    } catch (e) {
+      // ignore
+    }
+
+    // 2. Overwrite in Firestore
+    try {
+      const batch = writeBatch(db);
+      const existingSnap = await getDocs(col('timesheets'));
+      existingSnap.forEach(d => {
+        batch.delete(docRef('timesheets', d.id));
+      });
+      restoredList.forEach(ts => {
+        batch.set(docRef('timesheets', ts.id), sanitizeForFirestore(ts));
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error("Error restoring timesheets to Firestore:", err);
+      throw err;
     }
   };
 
@@ -717,20 +768,20 @@ export default function App() {
       try {
         const batch = writeBatch(db);
         patients.forEach(p => {
-          batch.delete(doc(db, 'patients', p.id));
+          batch.delete(docRef('patients', p.id));
         });
         doctors.forEach(d => {
-          batch.delete(doc(db, 'doctors', d.id));
+          batch.delete(docRef('doctors', d.id));
         });
         staff.forEach(s => {
-          batch.delete(doc(db, 'staff', s.id));
+          batch.delete(docRef('staff', s.id));
         });
         notifications.forEach(n => {
-          batch.delete(doc(db, 'notifications', n.id));
+          batch.delete(docRef('notifications', n.id));
         });
         await batch.commit();
 
-        await setDoc(doc(db, 'config', 'system'), {
+        await setDoc(docRef('config', 'system'), {
           currentDagdeel: 'ochtend',
           activeStaffId: 'staff-karina',
           teamsWebhookUrl: ''
@@ -851,6 +902,7 @@ export default function App() {
                   onRunGdprAnonymize={() => executeGdprAnonymization(systemConfig.gdprRetentionHours || 24)}
                   onTeamsNotify={handleTeamsNotify}
                   onSwitchView={(v) => handleRequestViewChange(v)}
+                  onRestoreTimesheets={handleRestoreTimesheets}
                 />
               </div>
             </div>
@@ -898,6 +950,7 @@ export default function App() {
               onRunGdprAnonymize={() => executeGdprAnonymization(systemConfig.gdprRetentionHours || 24)}
               onTeamsNotify={handleTeamsNotify}
               onSwitchView={(v) => handleRequestViewChange(v)}
+              onRestoreTimesheets={handleRestoreTimesheets}
               onSyncStaff={async () => {
                 await syncStaffBetweenConfigAndLeave(staff, doctors);
               }}

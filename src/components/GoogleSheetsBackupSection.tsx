@@ -20,21 +20,25 @@ import {
   CheckCircle2,
   AlertCircle,
   LogOut,
-  Check
+  Check,
+  RotateCcw
 } from 'lucide-react';
+import { BackupRestoreModal } from './BackupRestoreModal';
 
 interface GoogleSheetsBackupSectionProps {
   timesheets: Timesheet[];
   staffList: ActiveStaff[];
   systemConfig: SystemConfig;
   onUpdateConfig: (config: Partial<SystemConfig>) => void;
+  onRestoreTimesheets?: (restored: Timesheet[]) => Promise<void>;
 }
 
 export default function GoogleSheetsBackupSection({
   timesheets,
   staffList,
   systemConfig,
-  onUpdateConfig
+  onUpdateConfig,
+  onRestoreTimesheets
 }: GoogleSheetsBackupSectionProps) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [hasToken, setHasToken] = useState<boolean>(false);
@@ -42,6 +46,7 @@ export default function GoogleSheetsBackupSection({
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
 
   // Listen to auth state
   useEffect(() => {
@@ -65,6 +70,10 @@ export default function GoogleSheetsBackupSection({
     setSyncFeedback(null);
     try {
       const res = await googleSignIn();
+      if (!res) {
+        // Gebruiker heeft inloggen geannuleerd of pop-up venster gesloten
+        return;
+      }
       setCurrentUser(res.user);
       setHasToken(true);
       setSyncFeedback({
@@ -72,10 +81,24 @@ export default function GoogleSheetsBackupSection({
         message: `Verbonden met Google Account: ${res.user.email}`
       });
     } catch (err: any) {
+      const isCancelled =
+        err?.code === 'auth/popup-closed-by-user' ||
+        err?.code === 'auth/cancelled-popup-request' ||
+        err?.message?.includes('popup-closed-by-user') ||
+        err?.message?.includes('cancelled-popup-request');
+
+      if (isCancelled) {
+        return;
+      }
+
       console.error('Google Sign In failed:', err);
+      let errorMsg = err.message || 'Inloggen met Google is mislukt.';
+      if (err?.code === 'auth/popup-blocked') {
+        errorMsg = 'De Google inlog pop-up werd geblokkeerd door uw browser. Sta pop-ups toe in de browserbalk.';
+      }
       setSyncFeedback({
         type: 'error',
-        message: err.message || 'Inloggen met Google is mislukt.'
+        message: errorMsg
       });
     } finally {
       setIsLoggingIn(false);
@@ -178,6 +201,17 @@ export default function GoogleSheetsBackupSection({
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
             <span>{isSyncing ? 'Bezig...' : 'Nu Synchroniseren'}</span>
+          </button>
+
+          <button
+            id="btn-restore-timesheets-backup"
+            type="button"
+            onClick={() => setShowRestoreModal(true)}
+            className="py-1.5 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm text-xs shrink-0 whitespace-nowrap"
+            title="Herstel of schakel over naar een eerdere backup van tiktijden (PIN bevestiging vereist)"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            <span>Overstappen naar Backup</span>
           </button>
 
           {systemConfig.googleSheetsSpreadsheetUrl && (
@@ -304,6 +338,22 @@ export default function GoogleSheetsBackupSection({
           </div>
         </div>
       )}
+
+      {/* Restore / Overstappen naar Backup Modal */}
+      <BackupRestoreModal
+        isOpen={showRestoreModal}
+        onClose={() => setShowRestoreModal(false)}
+        mode="timesheets"
+        systemConfig={systemConfig}
+        staffList={staffList}
+        onRestoreTimesheets={onRestoreTimesheets}
+        onSuccessMessage={(msg) => {
+          setSyncFeedback({
+            type: 'success',
+            message: msg
+          });
+        }}
+      />
     </div>
   );
 }
