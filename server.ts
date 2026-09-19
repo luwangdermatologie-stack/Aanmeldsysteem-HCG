@@ -300,6 +300,20 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`[Server] Draait live op http://localhost:${PORT}`);
   });
+
+  // Support Google Cloud Run / container PORT environment variable (default 8080)
+  const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : null;
+  if (envPort && envPort !== PORT) {
+    const cloudRunServer = app.listen(envPort, "0.0.0.0", () => {
+      console.log(`[Server] Cloud Run listener actief op poort ${envPort}`);
+    });
+    cloudRunServer.on("error", (err: any) => {
+      // In local dev/sandbox environments where 8080 is already bound by proxy, ignore EADDRINUSE
+      if (err.code !== "EADDRINUSE") {
+        console.error(`[Server] Fout op poort ${envPort}:`, err);
+      }
+    });
+  }
 }
 
 startServer();
