@@ -332,7 +332,119 @@ export function getDayKeyFromDate(d: Date): DayOfWeekKey | null {
 }
 
 /**
- * Returns ISO week number and year, with 5 workdays (Monday-Friday)
+ * Calculates Easter Sunday for any given year using the Gregorian algorithm (Meeus/Jones/Butcher)
+ */
+export function getEasterSunday(year: number): Date {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatDateUTC(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Returns all official 10 statutory Belgian public holidays (wettelijke feestdagen) for a given year.
+ * Key: "YYYY-MM-DD", Value: Dutch holiday name
+ */
+export function getBelgianPublicHolidays(year: number): Record<string, string> {
+  const holidays: Record<string, string> = {
+    [`${year}-01-01`]: 'Nieuwjaarsdag',
+    [`${year}-05-01`]: 'Feest van de Arbeid',
+    [`${year}-07-21`]: 'Nationale Feestdag',
+    [`${year}-08-15`]: 'O.L.V. Hemelvaart',
+    [`${year}-11-01`]: 'Allerheiligen',
+    [`${year}-11-11`]: 'Wapenstilstand',
+    [`${year}-12-25`]: 'Kerstmis'
+  };
+
+  const easter = getEasterSunday(year);
+
+  // Paasmaandag (Easter Monday: +1 day)
+  const easterMonday = new Date(easter);
+  easterMonday.setUTCDate(easter.getUTCDate() + 1);
+  holidays[formatDateUTC(easterMonday)] = 'Paasmaandag';
+
+  // O.L.H. Hemelvaart (Ascension Day: +39 days, always Thursday)
+  const ascension = new Date(easter);
+  ascension.setUTCDate(easter.getUTCDate() + 39);
+  holidays[formatDateUTC(ascension)] = 'O.L.H. Hemelvaart';
+
+  // Pinkstermaandag (Whit Monday: +50 days, always Monday)
+  const whitMonday = new Date(easter);
+  whitMonday.setUTCDate(easter.getUTCDate() + 50);
+  holidays[formatDateUTC(whitMonday)] = 'Pinkstermaandag';
+
+  return holidays;
+}
+
+/**
+ * Checks if a specific date (YYYY-MM-DD or Date object) is a statutory Belgian public holiday.
+ * Returns the holiday name or null.
+ */
+export function getBelgianHoliday(dateInput: string | Date): string | null {
+  let dateStr: string;
+  let year: number;
+  if (typeof dateInput === 'string') {
+    dateStr = dateInput;
+    year = parseInt(dateStr.split('-')[0], 10);
+  } else {
+    const y = dateInput.getFullYear();
+    const m = String(dateInput.getMonth() + 1).padStart(2, '0');
+    const d = String(dateInput.getDate()).padStart(2, '0');
+    dateStr = `${y}-${m}-${d}`;
+    year = y;
+  }
+  if (!year || isNaN(year)) return null;
+
+  const holidays = getBelgianPublicHolidays(year);
+  return holidays[dateStr] || null;
+}
+
+export function isBelgianHoliday(dateInput: string | Date): boolean {
+  return getBelgianHoliday(dateInput) !== null;
+}
+
+/**
+ * Generates official Belgian public holiday leave requests for all staff members for a specific date or holiday.
+ */
+export function createBelgianHolidayLeaveRequests(
+  dateStr: string,
+  holidayName: string,
+  staffList: StaffMember[]
+): LeaveRequest[] {
+  return staffList.map(staff => ({
+    id: `holiday-${dateStr}-${staff.id}`,
+    staff_id: staff.id,
+    staff_name: staff.name,
+    date: dateStr,
+    slot: 'HELE_DAG',
+    units: 1.0,
+    type: 'feestdag',
+    status: 'goedgekeurd',
+    note: `Wettelijke feestdag in België: ${holidayName} (Automatisch verlof voor iedereen)`,
+    created_at: new Date().toISOString()
+  }));
+}
+
+/**
+ * Returns ISO week number and year, with 5 workdays (Monday-Friday) and Belgian holiday detection
  */
 export function getISOWeekDetails(date: Date) {
   const target = new Date(date.valueOf());
@@ -368,13 +480,16 @@ export function getISOWeekDetails(date: Date) {
     const dd = String(cur.getDate()).padStart(2, '0');
     const dateStr = `${yyyy}-${mm}-${dd}`;
     const dayMeta = DAYS_OF_WEEK.find(d => d.key === dayKey);
+    const holidayName = getBelgianHoliday(dateStr);
     return {
       date: cur,
       dateStr,
       dayKey,
       label: dayMeta ? dayMeta.label : dayKey,
       short: dayMeta ? dayMeta.short : dayKey,
-      formattedDate: `${cur.getDate()}/${cur.getMonth() + 1}`
+      formattedDate: `${cur.getDate()}/${cur.getMonth() + 1}`,
+      isHoliday: Boolean(holidayName),
+      holidayName: holidayName || undefined
     };
   });
 
@@ -408,6 +523,11 @@ export function validateLeaveRequest(
 
   if (!dateStr) {
     return { valid: false, error: 'Selecteer een datum.' };
+  }
+
+  // Belgian statutory holidays are valid for everyone
+  if (type === 'feestdag') {
+    return { valid: true };
   }
 
   // Parse date
@@ -618,6 +738,8 @@ export interface MonthCalendarDay {
   isCurrentMonth: boolean;
   isToday: boolean;
   isWeekend: boolean;
+  isHoliday?: boolean;
+  holidayName?: string;
 }
 
 export interface MonthCalendarWeek {
@@ -699,6 +821,8 @@ export function getMonthCalendarWeeks(
         short = 'Zo';
       }
 
+      const holidayName = getBelgianHoliday(dateStr);
+
       weekDays.push({
         date: d,
         dateStr,
@@ -708,7 +832,9 @@ export function getMonthCalendarWeeks(
         dayShort: short,
         isCurrentMonth: d.getMonth() === month,
         isToday: dateStr === todayStr,
-        isWeekend
+        isWeekend,
+        isHoliday: Boolean(holidayName),
+        holidayName: holidayName || undefined
       });
     }
 

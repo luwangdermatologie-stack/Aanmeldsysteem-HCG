@@ -167,6 +167,12 @@ export default function AdminDashboard({
   const [isCloningData, setIsCloningData] = useState(false);
   const [isResettingTestData, setIsResettingTestData] = useState(false);
 
+  // Environment Switch PIN Modal State (Developer protection)
+  const [isEnvModalOpen, setIsEnvModalOpen] = useState(false);
+  const [envPinInput, setEnvPinInput] = useState('');
+  const [showEnvPin, setShowEnvPin] = useState(false);
+  const [envPinError, setEnvPinError] = useState<string | null>(null);
+
   useEffect(() => {
     const handleEnvChange = (e: any) => {
       const newEnv = e.detail?.environment || getDetectedEnvironment();
@@ -176,10 +182,26 @@ export default function AdminDashboard({
     return () => window.removeEventListener('hcg_environment_changed', handleEnvChange);
   }, []);
 
-  const handleToggleEnvironment = () => {
+  const handleInitiateToggleEnvironment = () => {
+    setEnvPinInput('');
+    setEnvPinError(null);
+    setShowEnvPin(false);
+    setIsEnvModalOpen(true);
+  };
+
+  const handleConfirmToggleEnvironment = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const expectedPin = systemConfig.adminPin || '1234';
+    if (envPinInput.trim() !== expectedPin) {
+      setEnvPinError('Onjuiste pincode. Voer de geldige beheerder/developer-PIN in.');
+      return;
+    }
     const nextEnv: AppEnvironment = currentEnv === 'test' ? 'production' : 'test';
     setEnvironmentOverride(nextEnv);
     setCurrentEnv(nextEnv);
+    setIsEnvModalOpen(false);
+    setEnvPinInput('');
+    setEnvPinError(null);
     showToast(`Omschakeling naar ${nextEnv === 'test' ? 'Testomgeving (AI Studio)' : 'Productie-omgeving (GitHub)'}`, "info");
   };
 
@@ -781,61 +803,111 @@ export default function AdminDashboard({
         </div>
       )}
       
-      {/* Admin Panel Header Banner - Apple Glass Header */}
-      <div className="apple-glass px-6 py-3 flex justify-end items-center gap-2.5 border-b border-black/5 shrink-0">
-        {/* Action controls inside header */}
-        <div className="flex gap-2 text-xs flex-wrap items-center">
-          {/* Environment Status Badge & Quick Switcher */}
-          <div className={`px-3 py-1.5 rounded-full border text-xs font-medium shadow-2xs backdrop-blur-xs flex items-center gap-1.5 ${
-            currentEnv === 'test' 
-              ? 'bg-amber-50/90 border-amber-200 text-amber-800' 
-              : 'bg-emerald-50/90 border-emerald-200 text-emerald-800'
-          }`}>
-            <Database className={`h-3 w-3 ${currentEnv === 'test' ? 'text-amber-600' : 'text-emerald-600'}`} />
-            <span>
-              Omgeving: <strong className="font-semibold">{currentEnv === 'test' ? 'Test (AI Studio)' : 'Productie (GitHub)'}</strong>
-            </span>
-            <button
-              type="button"
-              onClick={handleToggleEnvironment}
-              title={`Klik om te wisselen naar ${currentEnv === 'test' ? 'Productie' : 'Test'}`}
-              className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-white hover:bg-slate-100 text-slate-700 font-semibold cursor-pointer border border-slate-200/80 shadow-2xs transition"
-            >
-              Wissel
-            </button>
-          </div>
+      {/* CUSTOM MODAL: ENVIRONMENT SWITCH CONFIRMATION & DEVELOPER PIN */}
+      {isEnvModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-fade-in text-slate-800">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-amber-600 to-rose-600 text-white p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0">
+                <ShieldAlert className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold tracking-tight">Omgeving Wisselen</h3>
+                <p className="text-xs text-amber-100 font-medium">Beveiligde ontwikkelaarsactie</p>
+              </div>
+            </div>
 
-          {onSwitchView && (
-            <button
-              type="button"
-              onClick={() => onSwitchView('kiosk')}
-              className="px-3 py-1.5 rounded-full bg-white/80 hover:bg-white text-slate-700 hover:text-slate-900 border border-black/5 shadow-2xs backdrop-blur-xs transition cursor-pointer font-semibold flex items-center gap-1.5 text-xs"
-              title="Naar Kiosk (Patiënten Tablet)"
-            >
-              <Tablet className="h-3.5 w-3.5 text-[#0071E3]" />
-              <span>Kiosk</span>
-            </button>
-          )}
-          <div className="bg-white/80 px-3.5 py-1.5 rounded-full border border-black/5 flex items-center gap-1.5 text-slate-600 shadow-2xs backdrop-blur-xs">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            Ondersteuning: <strong className="text-slate-900">{activeStaffName}</strong>
+            {/* Modal Content */}
+            <form onSubmit={handleConfirmToggleEnvironment} className="p-5 space-y-4 text-xs">
+              {/* Developer-only reminder box */}
+              <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 space-y-2">
+                <div className="flex items-center gap-2 font-bold text-amber-950 text-[13px]">
+                  <span>⚠️</span>
+                  <span>Belangrijke herinnering (Enkel Developer):</span>
+                </div>
+                <p className="leading-relaxed font-medium">
+                  Het wisselen van de omgeving mag <strong>enkel en alleen door de developer</strong> worden uitgevoerd!
+                </p>
+                <p className="text-[11px] text-amber-800 leading-normal">
+                  Deze actie schakelt per direct de database om voor alle schermen (kiosk en balie) op dit apparaat. Voer dit nooit uit tijdens normale praktijkvoering.
+                </p>
+              </div>
+
+              {/* Environment transition visual */}
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Huidige omgeving:</span>
+                  <span className="font-semibold text-slate-700">
+                    {currentEnv === 'test' ? '🧪 Test (AI Studio)' : '🚀 Productie (GitHub)'}
+                  </span>
+                </div>
+                <div className="text-slate-400 font-bold text-base">➔</div>
+                <div className="text-right">
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Nieuwe omgeving:</span>
+                  <span className="font-bold text-indigo-700">
+                    {currentEnv === 'test' ? '🚀 Productie (GitHub)' : '🧪 Test (AI Studio)'}
+                  </span>
+                </div>
+              </div>
+
+              {/* PIN Code Input */}
+              <div className="space-y-1.5">
+                <label className="block font-bold text-slate-700">
+                  Voer beheerder / developer PIN-code in:
+                </label>
+                <div className="relative">
+                  <input
+                    type={showEnvPin ? "text" : "password"}
+                    autoFocus
+                    value={envPinInput}
+                    onChange={(e) => {
+                      setEnvPinInput(e.target.value);
+                      if (envPinError) setEnvPinError(null);
+                    }}
+                    placeholder="Voer PIN-code in..."
+                    className="w-full text-sm font-mono tracking-widest py-2.5 px-3 rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEnvPin(!showEnvPin)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showEnvPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {envPinError && (
+                  <p className="text-rose-600 font-semibold text-[11px] pt-1 flex items-center gap-1">
+                    <span>✕</span> {envPinError}
+                  </p>
+                )}
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEnvModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold transition cursor-pointer"
+                >
+                  Annuleren
+                </button>
+                <button
+                  type="submit"
+                  disabled={!envPinInput.trim()}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl font-bold transition shadow-xs cursor-pointer disabled:cursor-not-allowed"
+                >
+                  Bevestig & Wissel Omgeving
+                </button>
+              </div>
+            </form>
           </div>
-          <button
-            onClick={() => setActiveTab('config')}
-            className={`px-3.5 py-1.5 rounded-full border transition duration-200 cursor-pointer font-semibold shadow-2xs ${
-              activeTab === 'config' 
-                ? 'bg-[#0071E3] border-blue-500/30 text-white shadow-sm' 
-                : 'bg-white/80 border-black/5 text-slate-600 hover:bg-white hover:text-slate-900'
-            }`}
-          >
-            Configuratie & Reset
-          </button>
         </div>
-      </div>
+      )}
 
       {/* Admin Tabs - Apple Glass Pill Bar */}
       <div className="bg-white/60 border-b border-black/5 px-6 py-2.5 flex justify-between items-center text-xs shrink-0 flex-wrap gap-2 backdrop-blur-md">
-        <div className="flex gap-1.5 bg-slate-200/50 p-1 rounded-2xl border border-black/5 shadow-inner">
+        <div className="flex gap-1.5 bg-slate-200/50 p-1 rounded-2xl border border-black/5 shadow-inner flex-wrap">
           <button
             onClick={() => setActiveTab('overview')}
             className={`px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
@@ -870,6 +942,18 @@ export default function AdminDashboard({
           >
             <CalendarRange className="h-3.5 w-3.5" />
             Verlofplanning
+          </button>
+
+          <button
+            onClick={() => setActiveTab('config')}
+            className={`px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'config' 
+                ? 'bg-[#0071E3] text-white font-bold shadow-sm' 
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Settings className={`h-3.5 w-3.5 ${activeTab === 'config' ? 'text-white' : 'text-[#0071E3]'}`} />
+            Configuratie & Reset
           </button>
         </div>
 
@@ -1748,7 +1832,7 @@ export default function AdminDashboard({
                     </div>
                     <button
                       type="button"
-                      onClick={handleToggleEnvironment}
+                      onClick={handleInitiateToggleEnvironment}
                       className="mt-3 w-full bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2 px-3 rounded-lg transition text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <RefreshCw className="h-3.5 w-3.5" />
@@ -2058,6 +2142,51 @@ export default function AdminDashboard({
         )}
 
       </div>
+
+      {/* FOOTER BAR: OMGEVING, KIOSK EN ONDERSTEUNING (HELEMAAL ONDERAAN) */}
+      <footer className="bg-white/95 border-t border-slate-200/80 px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0 shadow-2xs backdrop-blur-md z-10">
+        {/* Left: Environment Indicator & Switcher */}
+        <div className="flex items-center gap-2">
+          <div className={`px-3 py-1.5 rounded-full border text-xs font-medium shadow-2xs flex items-center gap-1.5 ${
+            currentEnv === 'test' 
+              ? 'bg-amber-50/90 border-amber-200 text-amber-800' 
+              : 'bg-emerald-50/90 border-emerald-200 text-emerald-800'
+          }`}>
+            <Database className={`h-3.5 w-3.5 ${currentEnv === 'test' ? 'text-amber-600' : 'text-emerald-600'}`} />
+            <span>
+              Omgeving: <strong className="font-semibold">{currentEnv === 'test' ? 'Test (AI Studio)' : 'Productie (GitHub)'}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={handleInitiateToggleEnvironment}
+              title={`Klik om te wisselen naar ${currentEnv === 'test' ? 'Productie' : 'Test'} (beveiligd met PIN & developer herinnering)`}
+              className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-white hover:bg-slate-100 text-slate-700 font-semibold cursor-pointer border border-slate-200/80 shadow-2xs transition"
+            >
+              Wissel
+            </button>
+          </div>
+        </div>
+
+        {/* Right: Kiosk and Support staff */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {onSwitchView && (
+            <button
+              type="button"
+              onClick={() => onSwitchView('kiosk')}
+              className="px-3.5 py-1.5 rounded-full bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/80 shadow-2xs transition cursor-pointer font-semibold flex items-center gap-1.5 text-xs"
+              title="Naar Kiosk (Patiënten Tablet)"
+            >
+              <Tablet className="h-3.5 w-3.5 text-[#0071E3]" />
+              <span>Kiosk</span>
+            </button>
+          )}
+
+          <div className="bg-white px-3.5 py-1.5 rounded-full border border-slate-200/80 flex items-center gap-1.5 text-slate-600 shadow-2xs">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            Ondersteuning: <strong className="text-slate-900">{activeStaffName}</strong>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

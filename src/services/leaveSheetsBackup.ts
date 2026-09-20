@@ -250,7 +250,7 @@ export const backupLeaveToGoogleSheets = async (
     const nlDate = formatDutchDate(r.date);
     const slotLabel = r.slot === 'HELE_DAG' ? 'Hele dag' : r.slot === 'VM' ? 'Voormiddag (VM)' : 'Namiddag (NM)';
     const units = r.units !== undefined ? r.units.toString() : (r.slot === 'HELE_DAG' ? '1.0' : '0.5');
-    const typeLabel = r.type === 'gecompenseerd' ? 'Gecompenseerde Werkdag' : r.type === 'verplicht' ? 'Verplicht Verlof' : 'Regulier Verlof';
+    const typeLabel = r.type === 'feestdag' ? 'Wettelijke Feestdag' : r.type === 'gecompenseerd' ? 'Gecompenseerde Werkdag' : r.type === 'verplicht' ? 'Verplicht Verlof' : 'Regulier Verlof';
     const statusLabel = r.status === 'goedgekeurd'
       ? 'Goedgekeurd (Gepland)'
       : r.status === 'aangevraagd'
@@ -411,7 +411,7 @@ export const generateLeaveCsvContent = (
     const nlDate = formatDutchDate(r.date);
     const slotLabel = r.slot === 'HELE_DAG' ? 'Hele dag' : r.slot === 'VM' ? 'Voormiddag (VM)' : 'Namiddag (NM)';
     const units = r.units !== undefined ? r.units.toString() : (r.slot === 'HELE_DAG' ? '1.0' : '0.5');
-    const typeLabel = r.type === 'gecompenseerd' ? 'Gecompenseerde Werkdag' : r.type === 'verplicht' ? 'Verplicht Verlof' : 'Regulier Verlof';
+    const typeLabel = r.type === 'feestdag' ? 'Wettelijke Feestdag' : r.type === 'gecompenseerd' ? 'Gecompenseerde Werkdag' : r.type === 'verplicht' ? 'Verplicht Verlof' : 'Regulier Verlof';
     const statusLabel = r.status === 'goedgekeurd'
       ? 'Goedgekeurd (Gepland)'
       : r.status === 'aangevraagd'
@@ -538,7 +538,7 @@ export const restoreLeaveRequestsFromGoogleSheets = async (
 
     const units = parseFloat(row[6]) || (slot === 'HELE_DAG' ? 1.0 : 0.5);
     const rawType = (row[7] || '').toLowerCase();
-    const type: LeaveType = rawType.includes('verplicht') ? 'verplicht' : 'regulier';
+    const type: LeaveType = rawType.includes('feestdag') ? 'feestdag' : rawType.includes('gecompenseerd') ? 'gecompenseerd' : rawType.includes('verplicht') ? 'verplicht' : 'regulier';
 
     const rawStatus = (row[8] || '').toLowerCase();
     let status: LeaveStatus = 'aangevraagd';

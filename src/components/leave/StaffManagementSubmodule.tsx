@@ -187,7 +187,6 @@ export const StaffManagementSubmodule: React.FC<StaffManagementSubmoduleProps> =
             </div>
             <div>
               <h3 className="font-bold text-slate-800 text-sm">Nieuw Personeelslid Toevoegen</h3>
-              <p className="text-[11px] text-slate-500">Automatisch gesynchroniseerd met Kiosk & Configuratie</p>
             </div>
           </div>
           {onSyncStaff && (

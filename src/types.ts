@@ -123,7 +123,7 @@ export interface StaffMember {
 }
 
 export type LeaveSlot = 'VM' | 'NM' | 'HELE_DAG';
-export type LeaveType = 'regulier' | 'verplicht' | 'gecompenseerd';
+export type LeaveType = 'regulier' | 'verplicht' | 'gecompenseerd' | 'feestdag';
 export type LeaveStatus = 'aangevraagd' | 'goedgekeurd' | 'afgekeurd' | 'on_hold';
 
 export interface LeaveRequest {
