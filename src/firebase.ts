@@ -242,115 +242,124 @@ export async function initializeDatabaseIfEmpty() {
       await batch.commit();
     }
 
-    const leaveRequestsSnap = await getDocs(col('leave_requests'));
-    if (leaveRequestsSnap.empty) {
-      console.log('Populating initial sample leave requests...');
-      const batch = writeBatch(db);
-      const weekInfo = getISOWeekDetails(new Date());
-      const wednesdayDateStr = weekInfo.days[2].dateStr;
-      const thursdayDateStr = weekInfo.days[3].dateStr;
-      const fridayDateStr = weekInfo.days[4].dateStr;
-
-      const sampleRequests: LeaveRequest[] = [
-        {
-          id: 'req-sample-1',
-          staff_id: 'staff-dr-mertens',
-          staff_name: 'Dr. Elisabeth Mertens',
-          date: wednesdayDateStr,
-          slot: 'VM',
-          units: 0.5,
-          type: 'regulier',
-          status: 'goedgekeurd',
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 'req-sample-2',
-          staff_id: 'staff-karina',
-          staff_name: 'Karina Ceusters',
-          date: thursdayDateStr,
-          slot: 'HELE_DAG',
-          units: 1.0,
-          type: 'verplicht',
-          status: 'goedgekeurd',
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 'req-sample-3',
-          staff_id: 'staff-steven',
-          staff_name: 'Steven De Coninck',
-          date: fridayDateStr,
-          slot: 'VM',
-          units: 0.5,
-          type: 'verplicht',
-          status: 'aangevraagd',
-          created_at: new Date().toISOString()
-        }
-      ];
-
-      sampleRequests.forEach(req => {
-        batch.set(docRef('leave_requests', req.id), req);
+    // Only seed initial sample leave requests, comments, and todos once
+    const leaveInitDoc = await getDoc(docRef('leave_config', 'db_initialized'));
+    if (!leaveInitDoc.exists()) {
+      await setDoc(docRef('leave_config', 'db_initialized'), {
+        initialized_at: new Date().toISOString(),
+        version: 1
       });
-      await batch.commit();
-    }
 
-    const leaveCommentsSnap = await getDocs(col('leave_comments'));
-    if (leaveCommentsSnap.empty) {
-      console.log('Populating initial sample leave comments...');
-      const batch = writeBatch(db);
-      const currentWeekId = getISOWeekDetails(new Date()).identifier;
-      const sampleComment: GeneralComment = {
-        id: 'comment-init-1',
-        week_identifier: currentWeekId,
-        author_id: 'staff-karina',
-        author_name: 'Karina Ceusters',
-        message: 'Gelieve verlofaanvragen voor de herfst- en eindejaarsperiode tijdig in te dienen zodat de zaalbezetting tijdig kan worden afgestemd.',
-        created_at: new Date().toISOString()
-      };
-      batch.set(docRef('leave_comments', sampleComment.id), sampleComment);
-      await batch.commit();
-    }
+      const leaveRequestsSnap = await getDocs(col('leave_requests'));
+      if (leaveRequestsSnap.empty) {
+        console.log('Populating initial sample leave requests...');
+        const batch = writeBatch(db);
+        const weekInfo = getISOWeekDetails(new Date());
+        const wednesdayDateStr = weekInfo.days[2].dateStr;
+        const thursdayDateStr = weekInfo.days[3].dateStr;
+        const fridayDateStr = weekInfo.days[4].dateStr;
 
-    const leaveTodosSnap = await getDocs(col('leave_todos'));
-    if (leaveTodosSnap.empty) {
-      console.log('Populating initial sample leave coordinator todos...');
-      const batch = writeBatch(db);
-      const today = new Date();
-      const nextWeekDate = new Date(today);
-      nextWeekDate.setDate(today.getDate() + 5);
-      const yyyy = nextWeekDate.getFullYear();
-      const mm = String(nextWeekDate.getMonth() + 1).padStart(2, '0');
-      const dd = String(nextWeekDate.getDate()).padStart(2, '0');
+        const sampleRequests: LeaveRequest[] = [
+          {
+            id: 'req-sample-1',
+            staff_id: 'staff-dr-mertens',
+            staff_name: 'Dr. Elisabeth Mertens',
+            date: wednesdayDateStr,
+            slot: 'VM',
+            units: 0.5,
+            type: 'regulier',
+            status: 'goedgekeurd',
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 'req-sample-2',
+            staff_id: 'staff-karina',
+            staff_name: 'Karina Ceusters',
+            date: thursdayDateStr,
+            slot: 'HELE_DAG',
+            units: 1.0,
+            type: 'verplicht',
+            status: 'goedgekeurd',
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 'req-sample-3',
+            staff_id: 'staff-steven',
+            staff_name: 'Steven De Coninck',
+            date: fridayDateStr,
+            slot: 'VM',
+            units: 0.5,
+            type: 'verplicht',
+            status: 'goedgekeurd',
+            created_at: new Date().toISOString()
+          }
+        ];
 
-      const sampleTodos: TodoItem[] = [
-        {
-          id: 'todo-init-1',
-          title: 'Vervanging zaalassistentie afstemmen voor donderdag (Karina afwezig)',
-          deadline: `${yyyy}-${mm}-${dd}`,
-          is_completed: false,
-          archived: false,
+        sampleRequests.forEach(req => {
+          batch.set(docRef('leave_requests', req.id), req);
+        });
+        await batch.commit();
+      }
+
+      const leaveCommentsSnap = await getDocs(col('leave_comments'));
+      if (leaveCommentsSnap.empty) {
+        console.log('Populating initial sample leave comments...');
+        const batch = writeBatch(db);
+        const currentWeekId = getISOWeekDetails(new Date()).identifier;
+        const sampleComment: GeneralComment = {
+          id: 'comment-init-1',
+          week_identifier: currentWeekId,
+          author_id: 'staff-karina',
+          author_name: 'Karina Ceusters',
+          message: 'Gelieve verlofaanvragen voor de herfst- en eindejaarsperiode tijdig in te dienen zodat de zaalbezetting tijdig kan worden afgestemd.',
           created_at: new Date().toISOString()
-        },
-        {
-          id: 'todo-init-2',
-          title: 'Wekelijkse Google Sheets verlofbackup controleren',
-          deadline: `${yyyy}-${mm}-${dd}`,
-          is_completed: false,
-          archived: false,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 'todo-init-3',
-          title: 'Personeelsplanning Q4 definitief vastleggen met directie',
-          is_completed: true,
-          archived: true,
-          created_at: new Date(Date.now() - 86400000 * 3).toISOString()
-        }
-      ];
+        };
+        batch.set(docRef('leave_comments', sampleComment.id), sampleComment);
+        await batch.commit();
+      }
 
-      sampleTodos.forEach(td => {
-        batch.set(docRef('leave_todos', td.id), td);
-      });
-      await batch.commit();
+      const leaveTodosSnap = await getDocs(col('leave_todos'));
+      if (leaveTodosSnap.empty) {
+        console.log('Populating initial sample leave coordinator todos...');
+        const batch = writeBatch(db);
+        const today = new Date();
+        const nextWeekDate = new Date(today);
+        nextWeekDate.setDate(today.getDate() + 5);
+        const yyyy = nextWeekDate.getFullYear();
+        const mm = String(nextWeekDate.getMonth() + 1).padStart(2, '0');
+        const dd = String(nextWeekDate.getDate()).padStart(2, '0');
+
+        const sampleTodos: TodoItem[] = [
+          {
+            id: 'todo-init-1',
+            title: 'Vervanging zaalassistentie afstemmen voor donderdag (Karina afwezig)',
+            deadline: `${yyyy}-${mm}-${dd}`,
+            is_completed: false,
+            archived: false,
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 'todo-init-2',
+            title: 'Wekelijkse Google Sheets verlofbackup controleren',
+            deadline: `${yyyy}-${mm}-${dd}`,
+            is_completed: false,
+            archived: false,
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 'todo-init-3',
+            title: 'Personeelsplanning Q4 definitief vastleggen met directie',
+            is_completed: true,
+            archived: true,
+            created_at: new Date(Date.now() - 86400000 * 3).toISOString()
+          }
+        ];
+
+        sampleTodos.forEach(td => {
+          batch.set(docRef('leave_todos', td.id), td);
+        });
+        await batch.commit();
+      }
     }
   } catch (err) {
     console.error('Error during database initialization:', err);

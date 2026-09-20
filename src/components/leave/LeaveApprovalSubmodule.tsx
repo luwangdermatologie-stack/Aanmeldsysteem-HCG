@@ -133,8 +133,8 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
   const [showArchive, setShowArchive] = useState(false);
   const [isSubmittingTodo, setIsSubmittingTodo] = useState(false);
 
-  // Wachtrij list filter states
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  // Wachtrij list filter states - default to pending approval queue
+  const [filterStatus, setFilterStatus] = useState<string>('aangevraagd');
   const [filterRole, setFilterRole] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -342,6 +342,10 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
   );
   const approvedCount = useMemo(
     () => leaveRequests.filter(r => r.status === 'goedgekeurd').length,
+    [leaveRequests]
+  );
+  const rejectedCount = useMemo(
+    () => leaveRequests.filter(r => r.status === 'afgekeurd').length,
     [leaveRequests]
   );
 
@@ -1270,8 +1274,100 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
       {viewMode === 'wachtrij' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-4">
           {/* Filter Bar */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Quick Status Pill Tabs */}
+              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60">
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus('aangevraagd')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                    filterStatus === 'aangevraagd'
+                      ? 'bg-amber-500 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
+                >
+                  <span>Wachtrij</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                    filterStatus === 'aangevraagd' ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {pendingCount}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus('goedgekeurd')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                    filterStatus === 'goedgekeurd'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
+                >
+                  <span>Goedgekeurd</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                    filterStatus === 'goedgekeurd' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {approvedCount}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus('on_hold')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                    filterStatus === 'on_hold'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
+                >
+                  <span>On Hold</span>
+                  {onHoldCount > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                      filterStatus === 'on_hold' ? 'bg-purple-700 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {onHoldCount}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus('afgekeurd')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                    filterStatus === 'afgekeurd'
+                      ? 'bg-red-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
+                >
+                  <span>Afgekeurd</span>
+                  {rejectedCount > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                      filterStatus === 'afgekeurd' ? 'bg-red-700 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {rejectedCount}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus('all')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                    filterStatus === 'all'
+                      ? 'bg-slate-800 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
+                >
+                  <span>Alle</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                    filterStatus === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {leaveRequests.length}
+                  </span>
+                </button>
+              </div>
+
               {/* Search */}
               <div className="relative">
                 <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1280,22 +1376,9 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                   placeholder="Zoek medewerker of datum..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-48"
+                  className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-44"
                 />
               </div>
-
-              {/* Status Filter */}
-              <select
-                value={filterStatus}
-                onChange={e => setFilterStatus(e.target.value)}
-                className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-              >
-                <option value="all">Alle Statussen</option>
-                <option value="aangevraagd">Alleen In Aanvraag</option>
-                <option value="on_hold">Alleen On Hold</option>
-                <option value="goedgekeurd">Alleen Goedgekeurd</option>
-                <option value="afgekeurd">Alleen Afgekeurd</option>
-              </select>
 
               {/* Role Filter */}
               <select
@@ -1314,7 +1397,7 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
               <button
                 type="button"
                 onClick={onBatchApproveAllPending}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 shadow-xs"
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 shadow-xs"
               >
                 <CheckCheck className="w-3.5 h-3.5" />
                 <span>Alles Goedkeuren ({pendingCount})</span>
@@ -1338,8 +1421,31 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {filteredQueueRequests.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400">
-                      Geen verlofaanvragen gevonden die voldoen aan de filters.
+                    <td colSpan={6} className="py-12 px-4 text-center">
+                      <div className="flex flex-col items-center justify-center space-y-2 max-w-sm mx-auto">
+                        <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-base shadow-xs">
+                          ✓
+                        </div>
+                        <p className="font-semibold text-slate-800 text-sm">
+                          {filterStatus === 'aangevraagd'
+                            ? 'Geen openstaande aanvragen in de wachtrij'
+                            : 'Geen verlofaanvragen gevonden'}
+                        </p>
+                        <p className="text-slate-500 text-xs">
+                          {filterStatus === 'aangevraagd'
+                            ? 'Alle verlofaanvragen zijn goedgekeurd of verwerkt.'
+                            : 'Er zijn geen verloven gevonden die voldoen aan de huidige zoekfilters.'}
+                        </p>
+                        {filterStatus !== 'all' && leaveRequests.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setFilterStatus('all')}
+                            className="mt-2 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          >
+                            Toon alle verloven ({leaveRequests.length})
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ) : (

@@ -105,12 +105,12 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       const cached = localStorage.getItem('derm_leave_requests_store');
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch (e) {
       console.warn("Could not read leave requests store", e);
     }
-    return getDefaultSampleLeaveRequests();
+    return [];
   });
 
   const [comments, setComments] = useState<GeneralComment[]>(() => {
@@ -218,17 +218,15 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     const unsubRequests = onSnapshot(
       col('leave_requests'),
       snapshot => {
-        if (!snapshot.empty) {
-          const list: LeaveRequest[] = [];
-          snapshot.forEach(d => {
-            const data = d.data();
-            list.push({ ...data, id: d.id } as LeaveRequest);
-          });
-          setLeaveRequests(list);
-          try {
-            localStorage.setItem('derm_leave_requests_store', JSON.stringify(list));
-          } catch (e) {}
-        }
+        const list: LeaveRequest[] = [];
+        snapshot.forEach(d => {
+          const data = d.data();
+          list.push({ ...data, id: d.id } as LeaveRequest);
+        });
+        setLeaveRequests(list);
+        try {
+          localStorage.setItem('derm_leave_requests_store', JSON.stringify(list));
+        } catch (e) {}
       },
       err => {
         console.warn('Firestore leave_requests listener (using local cache):', err);
@@ -649,7 +647,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       if (note !== undefined) {
         payload.note = note;
       }
-      await updateDoc(docRef('leave_requests', requestId), payload);
+      await setDoc(docRef('leave_requests', requestId), payload, { merge: true });
     } catch (err) {
       console.warn('Firestore update leave status failed, updated locally:', err);
     }
@@ -665,7 +663,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     });
 
     try {
-      await updateDoc(docRef('leave_requests', requestId), { note });
+      await setDoc(docRef('leave_requests', requestId), { note }, { merge: true });
     } catch (err) {
       console.warn('Firestore update leave note failed, updated locally:', err);
     }
@@ -700,7 +698,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       const batch = writeBatch(db);
       const pending = leaveRequests.filter(r => r.status === 'aangevraagd');
       pending.forEach(r => {
-        batch.update(docRef('leave_requests', r.id), { status: 'goedgekeurd' });
+        batch.set(docRef('leave_requests', r.id), { status: 'goedgekeurd' }, { merge: true });
       });
       await batch.commit();
     } catch (err) {
