@@ -999,8 +999,10 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     }
   };
 
-  // Count pending requests for tab badge
-  const pendingRequestsCount = leaveRequests.filter(r => r.status === 'aangevraagd').length;
+  // Count pending requests for tab badge (excluding statutory holidays)
+  const pendingRequestsCount = leaveRequests.filter(
+    r => r.status === 'aangevraagd' && r.type !== 'feestdag'
+  ).length;
 
   return (
     <div className="space-y-4">

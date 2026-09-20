@@ -361,29 +361,33 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
     return stats;
   }, [weekInfo.days, doctors, nurses, leaveRequests, shiftOverrides]);
 
-  // Overall counts for badges & summary
-  const pendingCount = useMemo(
-    () => leaveRequests.filter(r => r.status === 'aangevraagd').length,
+  // Overall counts for badges & summary (excluding statutory holidays)
+  const nonHolidayRequests = useMemo(
+    () => leaveRequests.filter(r => r.type !== 'feestdag'),
     [leaveRequests]
+  );
+  const pendingCount = useMemo(
+    () => nonHolidayRequests.filter(r => r.status === 'aangevraagd').length,
+    [nonHolidayRequests]
   );
   const onHoldCount = useMemo(
-    () => leaveRequests.filter(r => r.status === 'on_hold').length,
-    [leaveRequests]
+    () => nonHolidayRequests.filter(r => r.status === 'on_hold').length,
+    [nonHolidayRequests]
   );
   const approvedCount = useMemo(
-    () => leaveRequests.filter(r => r.status === 'goedgekeurd').length,
-    [leaveRequests]
+    () => nonHolidayRequests.filter(r => r.status === 'goedgekeurd').length,
+    [nonHolidayRequests]
   );
   const rejectedCount = useMemo(
-    () => leaveRequests.filter(r => r.status === 'afgekeurd').length,
-    [leaveRequests]
+    () => nonHolidayRequests.filter(r => r.status === 'afgekeurd').length,
+    [nonHolidayRequests]
   );
 
   // Week-specific pending count
   const weekPendingRequests = useMemo(() => {
     const weekDates = new Set(weekInfo.days.map(d => d.dateStr));
-    return leaveRequests.filter(r => weekDates.has(r.date) && r.status === 'aangevraagd');
-  }, [leaveRequests, weekInfo.days]);
+    return nonHolidayRequests.filter(r => weekDates.has(r.date) && r.status === 'aangevraagd');
+  }, [nonHolidayRequests, weekInfo.days]);
 
   // Open Approval Modal
   const handleOpenApprovalModal = (
@@ -570,10 +574,11 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
     }
   };
 
-  // Filtered requests for the wachtrij view
+  // Filtered requests for the wachtrij view (statutory Belgian holidays are excluded from queue/approval lists)
   const filteredQueueRequests = useMemo(() => {
     return leaveRequests
       .filter(r => {
+        if (r.type === 'feestdag') return false;
         if (filterStatus !== 'all' && r.status !== filterStatus) return false;
         const staff = findMatchingStaff(staffList, r.staff_id, r.staff_name);
         if (filterRole !== 'all' && staff?.role !== filterRole) return false;
@@ -1405,7 +1410,7 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                   <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
                     filterStatus === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-700'
                   }`}>
-                    {leaveRequests.length}
+                    {nonHolidayRequests.length}
                   </span>
                 </button>
               </div>
@@ -1478,13 +1483,13 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                             ? 'Alle verlofaanvragen zijn goedgekeurd of verwerkt.'
                             : 'Er zijn geen verloven gevonden die voldoen aan de huidige zoekfilters.'}
                         </p>
-                        {filterStatus !== 'all' && leaveRequests.length > 0 && (
+                        {filterStatus !== 'all' && nonHolidayRequests.length > 0 && (
                           <button
                             type="button"
                             onClick={() => setFilterStatus('all')}
                             className="mt-2 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer"
                           >
-                            Toon alle verloven ({leaveRequests.length})
+                            Toon alle verloven ({nonHolidayRequests.length})
                           </button>
                         )}
                       </div>
