@@ -19,7 +19,8 @@ import {
   getISOWeekDetails,
   calculateCompulsoryLeaveCounter,
   validateLeaveRequest,
-  isLeaveRequestForStaff
+  isLeaveRequestForStaff,
+  getBelgianHoliday
 } from '../../services/leaveService';
 import {
   ChevronLeft,
@@ -216,7 +217,7 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
       : (staff.schedule?.[dayKey]?.[slot] ?? false);
 
     // Check for active leave request on this date
-    const req = leaveRequests.find(r => {
+    let req = leaveRequests.find(r => {
       if (!isLeaveRequestForStaff(r, staff) || r.date !== dateStr) return false;
       if (r.status === 'afgekeurd') return false; // Rejected leave does not count
       const rSlot = (r.slot || '').toUpperCase();
@@ -224,6 +225,23 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
       if (slot.toUpperCase() === rSlot) return true;
       return false;
     });
+
+    // Check if this date is an official Belgian statutory public holiday
+    const holidayName = getBelgianHoliday(dateStr);
+    if (!req && holidayName) {
+      req = {
+        id: `holiday-${dateStr}-${staff.id}`,
+        staff_id: staff.id,
+        staff_name: staff.name,
+        date: dateStr,
+        slot: 'HELE_DAG',
+        units: 1.0,
+        type: 'feestdag',
+        status: 'goedgekeurd',
+        note: `Wettelijke feestdag in België: ${holidayName} (Automatisch verlof voor iedereen)`,
+        created_at: new Date().toISOString()
+      };
+    }
 
     // An active leave request (approved or requested) always applies and shows in the schema
     const effectiveLeaveRequest = req;
@@ -249,6 +267,16 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
     }> = {};
 
     weekInfo.days.forEach(d => {
+      // If it is a statutory Belgian holiday, the practice is closed and there is no shortage
+      if (d.isHoliday) {
+        stats[d.dateStr] = {
+          vm: { doctors: 0, nurses: 0, isShortage: false },
+          nm: { doctors: 0, nurses: 0, isShortage: false },
+          dayHasShortage: false
+        };
+        return;
+      }
+
       // Calculate VM
       let vmDocs = 0;
       doctors.forEach(doc => {
@@ -739,6 +767,8 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                       className={`p-2.5 text-center border-l transition-colors ${
                         hasShortage
                           ? 'bg-red-600 text-white border-red-700 shadow-inner'
+                          : d.isHoliday
+                          ? 'bg-rose-50 text-rose-950 border-rose-200'
                           : 'bg-slate-100/90 text-slate-800 border-slate-200'
                       }`}
                     >
@@ -746,16 +776,26 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                         {hasShortage && (
                           <AlertTriangle className="w-3.5 h-3.5 text-yellow-300 animate-bounce" />
                         )}
-                        <span className={`font-black text-xs ${hasShortage ? 'text-white' : 'text-slate-800'}`}>
+                        <span className={`font-black text-xs ${
+                          hasShortage ? 'text-white' : d.isHoliday ? 'text-rose-900' : 'text-slate-800'
+                        }`}>
                           {d.label}
                         </span>
                       </div>
-                      <div className={`text-[11px] font-normal ${hasShortage ? 'text-red-100 font-semibold' : 'text-slate-500'}`}>
+                      <div className={`text-[11px] font-normal ${
+                        hasShortage ? 'text-red-100 font-semibold' : d.isHoliday ? 'text-rose-700 font-semibold' : 'text-slate-500'
+                      }`}>
                         {d.formattedDate}
                       </div>
                       {hasShortage && (
                         <div className="mt-1 inline-block px-2 py-0.5 bg-red-800/90 text-white rounded-md text-[10px] font-black tracking-tight">
                           TEKORT VERPLEGING
+                        </div>
+                      )}
+                      {d.isHoliday && (
+                        <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 bg-rose-100/90 text-rose-800 border border-rose-200 rounded-md text-[10px] font-black tracking-tight">
+                          <span>🇧🇪</span>
+                          <span>{d.holidayName || 'Feestdag'}</span>
                         </div>
                       )}
                     </th>
@@ -1000,13 +1040,17 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className={`px-2.5 py-1 rounded-lg font-bold border text-xs ${
-                      activeQuickSlot.currentLeave.type === 'gecompenseerd'
+                      activeQuickSlot.currentLeave.type === 'feestdag'
+                        ? 'bg-rose-100 text-rose-950 border-rose-300'
+                        : activeQuickSlot.currentLeave.type === 'gecompenseerd'
                         ? 'bg-teal-100 text-teal-950 border-teal-300'
                         : activeQuickSlot.currentLeave.type === 'verplicht'
                         ? 'bg-amber-100 text-amber-900 border-amber-300'
                         : 'bg-indigo-100 text-indigo-900 border-indigo-300'
                     }`}>
-                      {activeQuickSlot.currentLeave.type === 'gecompenseerd'
+                      {activeQuickSlot.currentLeave.type === 'feestdag'
+                        ? '🇧🇪 Feestdag'
+                        : activeQuickSlot.currentLeave.type === 'gecompenseerd'
                         ? '💼 Compensatiedag'
                         : activeQuickSlot.currentLeave.type === 'verplicht'
                         ? 'Verplicht Verlof'
@@ -1046,8 +1090,25 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                 <div className="space-y-2">
                   <span className="text-xs font-bold text-slate-700 block">Kies actie voor deze status:</span>
 
-                  {/* If this is a Gecompenseerde Werkdag */}
-                  {activeQuickSlot.currentLeave.type === 'gecompenseerd' ? (
+                  {/* If this is a Belgian statutory holiday */}
+                  {activeQuickSlot.currentLeave.type === 'feestdag' ? (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2 text-rose-950">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">🇧🇪</span>
+                        <div>
+                          <h4 className="font-extrabold text-xs text-rose-900">
+                            Wettelijke Belgische Feestdag
+                          </h4>
+                          <p className="text-[11px] text-rose-700 font-semibold">
+                            {activeQuickSlot.currentLeave.note || 'Officiële feestdag in België'}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-600 bg-white/80 p-2.5 rounded-lg border border-rose-100">
+                        Op deze officiële feestdag is de praktijk gesloten en heeft elk personeelslid (artsen en verpleegkundigen) automatisch goedgekeurd wettelijk verlof.
+                      </p>
+                    </div>
+                  ) : activeQuickSlot.currentLeave.type === 'gecompenseerd' ? (
                     <>
                       {/* Approve button if pending */}
                       {activeQuickSlot.currentLeave.status === 'aangevraagd' && onUpdateLeaveStatus && (
@@ -1442,6 +1503,26 @@ const InteractiveSlotCell: React.FC<InteractiveSlotCellProps> = ({ status, staff
     const isPending = leaveRequest.status === 'aangevraagd';
     const isCompulsory = leaveRequest.type === 'verplicht';
     const isCompensated = leaveRequest.type === 'gecompenseerd';
+    const isHoliday = leaveRequest.type === 'feestdag';
+
+    if (isHoliday) {
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          title={`Wettelijke Feestdag: ${leaveRequest.note || 'Belgische Feestdag'} (Verlof voor iedereen). Klik om details te bekijken.`}
+          className="w-full h-9 rounded-lg flex flex-col items-center justify-center p-0.5 shadow-2xs transition cursor-pointer group bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-950"
+        >
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] leading-none">🇧🇪</span>
+            <Check className="w-2.5 h-2.5 text-rose-700 stroke-[3]" />
+          </div>
+          <span className="text-[9px] font-black leading-none mt-0.5 text-rose-900">
+            Feestdag ✓
+          </span>
+        </button>
+      );
+    }
 
     if (isCompensated) {
       return (

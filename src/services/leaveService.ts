@@ -427,7 +427,8 @@ export function createBelgianHolidayLeaveRequests(
   holidayName: string,
   staffList: StaffMember[]
 ): LeaveRequest[] {
-  return staffList.map(staff => ({
+  const activeStaff = staffList.filter(s => !isDummyPersonnel(s.id, s.name));
+  return activeStaff.map(staff => ({
     id: `holiday-${dateStr}-${staff.id}`,
     staff_id: staff.id,
     staff_name: staff.name,
@@ -439,6 +440,71 @@ export function createBelgianHolidayLeaveRequests(
     note: `Wettelijke feestdag in België: ${holidayName} (Automatisch verlof voor iedereen)`,
     created_at: new Date().toISOString()
   }));
+}
+
+/**
+ * Automatically ensures all statutory Belgian public holidays for the specified years
+ * are registered as approved leave requests for every staff member in staffList.
+ */
+export function syncBelgianPublicHolidays(
+  existingRequests: LeaveRequest[],
+  staffList: StaffMember[],
+  years: number[] = [
+    new Date().getFullYear() - 1,
+    new Date().getFullYear(),
+    new Date().getFullYear() + 1,
+    new Date().getFullYear() + 2
+  ]
+): { updatedRequests: LeaveRequest[]; newRequests: LeaveRequest[] } {
+  const activeStaff = staffList.filter(s => !isDummyPersonnel(s.id, s.name));
+  if (activeStaff.length === 0) {
+    return { updatedRequests: existingRequests, newRequests: [] };
+  }
+
+  const existingMap = new Map<string, LeaveRequest>();
+  existingRequests.forEach(r => {
+    // Key by staff_id + date
+    existingMap.set(`${r.staff_id}_${r.date}`, r);
+  });
+
+  const newRequests: LeaveRequest[] = [];
+
+  years.forEach(year => {
+    const holidays = getBelgianPublicHolidays(year);
+    Object.entries(holidays).forEach(([dateStr, holidayName]) => {
+      activeStaff.forEach(staff => {
+        const key = `${staff.id}_${dateStr}`;
+        const existing = existingMap.get(key);
+
+        if (!existing) {
+          const holidayLeave: LeaveRequest = {
+            id: `holiday-${dateStr}-${staff.id}`,
+            staff_id: staff.id,
+            staff_name: staff.name,
+            date: dateStr,
+            slot: 'HELE_DAG',
+            units: 1.0,
+            type: 'feestdag',
+            status: 'goedgekeurd',
+            note: `Wettelijke feestdag in België: ${holidayName} (Automatisch verlof voor iedereen)`,
+            created_at: new Date().toISOString()
+          };
+          newRequests.push(holidayLeave);
+          existingMap.set(key, holidayLeave);
+        } else if (existing.type !== 'feestdag' && existing.id.startsWith('holiday-')) {
+          existing.type = 'feestdag';
+          existing.status = 'goedgekeurd';
+        }
+      });
+    });
+  });
+
+  if (newRequests.length === 0) {
+    return { updatedRequests: existingRequests, newRequests: [] };
+  }
+
+  const updatedRequests = [...existingRequests, ...newRequests];
+  return { updatedRequests, newRequests };
 }
 
 /**
@@ -526,6 +592,15 @@ export function validateLeaveRequest(
   // Belgian statutory holidays are valid for everyone
   if (type === 'feestdag') {
     return { valid: true };
+  }
+
+  // If the date is an official Belgian statutory holiday, inform the user
+  const holidayName = getBelgianHoliday(dateStr);
+  if (holidayName) {
+    return {
+      valid: false,
+      error: `${dateStr} is een officiële Belgische feestdag (${holidayName}). Iedereen heeft op deze dag automatisch goedgekeurd verlof.`
+    };
   }
 
   // Parse date

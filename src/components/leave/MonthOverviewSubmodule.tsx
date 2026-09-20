@@ -131,8 +131,39 @@ export const MonthOverviewSubmodule: React.FC<MonthOverviewSubmoduleProps> = ({
       map.set(req.date, existing);
     });
 
+    // Ensure all Belgian statutory holidays within the displayed weeks are included for everyone
+    calendarWeeks.forEach(week => {
+      week.days.forEach(day => {
+        if (day.isHoliday && day.holidayName) {
+          staffList.forEach(staff => {
+            if (selectedRoleFilter !== 'all' && staff.role !== selectedRoleFilter) return;
+            if (selectedStaffId !== 'all' && staff.id !== selectedStaffId) return;
+
+            const existingDayLeaves = map.get(day.dateStr) || [];
+            const hasStaffLeave = existingDayLeaves.some(l => l.staff_id === staff.id);
+            if (!hasStaffLeave) {
+              const syntheticHolidayLeave: LeaveRequest = {
+                id: `holiday-${day.dateStr}-${staff.id}`,
+                staff_id: staff.id,
+                staff_name: staff.name,
+                date: day.dateStr,
+                slot: 'HELE_DAG',
+                units: 1.0,
+                type: 'feestdag',
+                status: 'goedgekeurd',
+                note: `Wettelijke feestdag in België: ${day.holidayName} (Automatisch verlof voor iedereen)`,
+                created_at: new Date().toISOString()
+              };
+              existingDayLeaves.push(syntheticHolidayLeave);
+              map.set(day.dateStr, existingDayLeaves);
+            }
+          });
+        }
+      });
+    });
+
     return map;
-  }, [leaveRequests, staffList, selectedRoleFilter, selectedStaffId]);
+  }, [leaveRequests, staffList, selectedRoleFilter, selectedStaffId, calendarWeeks]);
 
   // Compute multi-day and half-day spans for each week
   const weekSpansMap = useMemo(() => {
@@ -490,15 +521,17 @@ export const MonthOverviewSubmodule: React.FC<MonthOverviewSubmoduleProps> = ({
                       type="button"
                       onClick={() => handleOpenAddForDay(day.dateStr, 'HELE_DAG')}
                       className="flex flex-col items-center cursor-pointer hover:opacity-80 transition"
-                      title={`+ Hele dag verlof op ${day.dateStr}`}
+                      title={day.isHoliday ? `Wettelijke Feestdag: ${day.holidayName}` : `+ Hele dag verlof op ${day.dateStr}`}
                     >
-                      <span className="text-[10px] font-semibold text-slate-400">
+                      <span className={`text-[10px] font-semibold ${day.isHoliday ? 'text-rose-600' : 'text-slate-400'}`}>
                         {day.dayShort}
                       </span>
                       <span
                         className={`text-[11px] font-black leading-tight ${
                           day.isToday
                             ? 'w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px]'
+                            : day.isHoliday
+                            ? 'w-4 h-4 rounded-full bg-rose-100 text-rose-800 flex items-center justify-center text-[10px]'
                             : day.isCurrentMonth
                             ? 'text-slate-700'
                             : 'text-slate-400'
@@ -686,7 +719,7 @@ export const MonthOverviewSubmodule: React.FC<MonthOverviewSubmoduleProps> = ({
 
             {/* Modal Actions */}
             <div className="mt-4 flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
-              {onDirectCancelLeave && activeSpanModal.requests.length === 1 && (
+              {onDirectCancelLeave && activeSpanModal.requests.length === 1 && activeSpanModal.requests[0].type !== 'feestdag' && (
                 <button
                   type="button"
                   onClick={async () => {
@@ -700,6 +733,13 @@ export const MonthOverviewSubmodule: React.FC<MonthOverviewSubmoduleProps> = ({
                   <Trash2 className="w-3 h-3" />
                   <span>Annuleren</span>
                 </button>
+              )}
+
+              {activeSpanModal.requests.length === 1 && activeSpanModal.requests[0].type === 'feestdag' && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-[11px] font-bold">
+                  <span>🇧🇪</span>
+                  <span>Wettelijke Feestdag (Automatisch verlof)</span>
+                </div>
               )}
 
               <div className="flex items-center gap-2 ml-auto">

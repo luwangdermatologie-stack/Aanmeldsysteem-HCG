@@ -28,7 +28,13 @@ import {
   Doctor,
   SystemConfig
 } from '../../types';
-import { syncStaffBetweenConfigAndLeave, isDummyPersonnel, isDummyLeaveRequest, isLeaveRequestForStaff } from '../../services/leaveService';
+import {
+  syncStaffBetweenConfigAndLeave,
+  isDummyPersonnel,
+  isDummyLeaveRequest,
+  isLeaveRequestForStaff,
+  syncBelgianPublicHolidays
+} from '../../services/leaveService';
 import { backupLeaveToGoogleSheets, downloadLeaveCsv } from '../../services/leaveSheetsBackup';
 import { getAccessToken } from '../../services/googleSheetsService';
 import { BackupRestoreModal } from '../BackupRestoreModal';
@@ -297,6 +303,24 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       unsubTodos();
     };
   }, [currentEnv]);
+
+  // Ensure all statutory Belgian public holidays are automatically registered as approved leave for everyone
+  useEffect(() => {
+    if (staffList.length === 0) return;
+    const { updatedRequests, newRequests } = syncBelgianPublicHolidays(leaveRequests, staffList);
+    if (newRequests.length > 0) {
+      setLeaveRequests(updatedRequests);
+      try {
+        localStorage.setItem('derm_leave_requests_store', JSON.stringify(updatedRequests));
+      } catch (e) {}
+
+      // Resilient background write to Firestore for new holiday requests
+      newRequests.forEach(req => {
+        setDoc(docRef('leave_requests', req.id), sanitizeForFirestore(req))
+          .catch(err => console.warn('Firestore holiday leave write:', err));
+      });
+    }
+  }, [staffList, leaveRequests.length]);
 
   const fetchBackupStatus = async () => {
     try {
