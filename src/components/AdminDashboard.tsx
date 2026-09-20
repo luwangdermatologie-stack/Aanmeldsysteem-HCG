@@ -23,7 +23,6 @@ import {
   MapPin, 
   Clock, 
   Hourglass, 
-  TrendingUp, 
   HelpCircle,
   FolderSync,
   CheckCircle,
@@ -37,7 +36,6 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
-  RotateCcw,
   Tablet,
   Database,
   Copy,
@@ -937,49 +935,24 @@ export default function AdminDashboard({
             onClick={() => setActiveTab('leave')}
             className={`px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'leave' 
-                ? 'bg-[#0071E3] text-white font-bold shadow-sm' 
+                ? 'bg-white text-slate-900 shadow-sm border border-black/5' 
                 : 'text-slate-500 hover:text-slate-900'
             }`}
           >
-            <CalendarRange className="h-3.5 w-3.5" />
+            <CalendarRange className="h-3.5 w-3.5 text-[#0071E3]" />
             Verlofplanning
           </button>
-        </div>
 
-        {/* Top Bar Action Controls: Configuratie, Reset & Simuleren */}
-        <div className="flex gap-2 items-center flex-wrap">
-          {/* Configuratie Button */}
           <button
             onClick={() => setActiveTab('config')}
-            className={`px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border shadow-2xs ${
-              activeTab === 'config'
-                ? 'bg-[#0071E3] text-white border-[#0071E3]'
-                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200/90'
+            className={`px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'config' 
+                ? 'bg-white text-slate-900 shadow-sm border border-black/5' 
+                : 'text-slate-500 hover:text-slate-900'
             }`}
-            title="Configuratie openen"
           >
             <Settings className="h-3.5 w-3.5 text-[#0071E3]" />
-            Configuratie
-          </button>
-
-          {/* Reset Dagdeel Button */}
-          <button
-            onClick={runDagdeelReset}
-            className="bg-amber-50 hover:bg-amber-100 text-amber-900 hover:text-amber-950 border border-amber-300 px-3 py-1.5 rounded-full text-xs font-bold cursor-pointer transition flex items-center gap-1.5 shadow-2xs"
-            title="Wissel dagdeel en reset de wachtrij"
-          >
-            <RotateCcw className="h-3.5 w-3.5 text-amber-700" />
-            Reset Dagdeel
-          </button>
-
-          {/* Quick Demo Assist */}
-          <button
-            onClick={onAddSimulatedPatient}
-            className="bg-white/80 hover:bg-white text-[#0071E3] hover:text-blue-700 border border-blue-200 px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition flex items-center gap-1.5 shadow-2xs"
-            title="Klik dit om direct een patiënt te simuleren voor snelle feedback!"
-          >
-            <TrendingUp className="h-3.5 w-3.5" />
-            + Simuleren Patiënt
+            Configuratie & Reset
           </button>
         </div>
       </div>
