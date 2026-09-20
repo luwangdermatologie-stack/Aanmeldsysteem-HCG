@@ -221,99 +221,97 @@ export function getStaffColorConfig(staff?: StaffMember | null, fallbackIndex: n
   return STAFF_COLOR_PALETTE[colorIndex];
 }
 
-export const INITIAL_LEAVE_STAFF: StaffMember[] = [
-  {
-    id: 'staff-dr-mertens',
-    name: 'Dr. Elisabeth Mertens',
-    role: 'arts',
-    color: '#4F46E5', // Indigo
-    schedule: {
-      maandag: { vm: true, nm: true },
-      dinsdag: { vm: true, nm: true },
-      woensdag: { vm: true, nm: true },
-      donderdag: { vm: true, nm: true },
-      vrijdag: { vm: true, nm: true }
-    }
-  },
-  {
-    id: 'staff-dr-vancamp',
-    name: 'Dr. Jasper Van Camp',
-    role: 'arts',
-    color: '#0284C7', // Sky blue
-    schedule: {
-      maandag: { vm: true, nm: true },
-      dinsdag: { vm: true, nm: true },
-      woensdag: { vm: false, nm: false },
-      donderdag: { vm: true, nm: true },
-      vrijdag: { vm: true, nm: true }
-    }
-  },
-  {
-    id: 'staff-dr-nilsson',
-    name: 'Dr. Linnea Nilsson',
-    role: 'arts',
-    color: '#7C3AED', // Violet
-    schedule: {
-      maandag: { vm: true, nm: true },
-      dinsdag: { vm: false, nm: false },
-      woensdag: { vm: true, nm: true },
-      donderdag: { vm: false, nm: false },
-      vrijdag: { vm: true, nm: true }
-    }
-  },
-  {
-    id: 'staff-dr-mansour',
-    name: 'Dr. Ahmed Mansour',
-    role: 'arts',
-    color: '#0D9488', // Teal
-    schedule: {
-      maandag: { vm: false, nm: false },
-      dinsdag: { vm: true, nm: true },
-      woensdag: { vm: true, nm: true },
-      donderdag: { vm: true, nm: true },
-      vrijdag: { vm: true, nm: false }
-    }
-  },
-  {
-    id: 'staff-karina',
-    name: 'Karina Ceusters',
-    role: 'verpleegkundige',
-    color: '#059669', // Emerald
-    schedule: {
-      maandag: { vm: true, nm: true },
-      dinsdag: { vm: true, nm: true },
-      woensdag: { vm: true, nm: true },
-      donderdag: { vm: true, nm: true },
-      vrijdag: { vm: true, nm: true }
-    }
-  },
-  {
-    id: 'staff-steven',
-    name: 'Steven De Coninck',
-    role: 'verpleegkundige',
-    color: '#D97706', // Amber
-    schedule: {
-      maandag: { vm: true, nm: true },
-      dinsdag: { vm: true, nm: true },
-      woensdag: { vm: true, nm: true },
-      donderdag: { vm: true, nm: true },
-      vrijdag: { vm: true, nm: false }
-    }
-  },
-  {
-    id: 'staff-mieke',
-    name: 'Mieke Peeters',
-    role: 'verpleegkundige',
-    color: '#E11D48', // Rose
-    schedule: {
-      maandag: { vm: false, nm: false },
-      dinsdag: { vm: true, nm: true },
-      woensdag: { vm: true, nm: true },
-      donderdag: { vm: true, nm: true },
-      vrijdag: { vm: true, nm: true }
-    }
+export const INITIAL_LEAVE_STAFF: StaffMember[] = [];
+
+export const KNOWN_DUMMY_IDS = new Set([
+  'dr-mertens', 'staff-dr-mertens',
+  'dr-vancamp', 'staff-dr-vancamp',
+  'dr-nilsson', 'staff-dr-nilsson',
+  'dr-mansour', 'staff-dr-mansour',
+  'staff-karina', 'staff-steven', 'staff-mieke',
+  'nurse-verpleegkundige', 'staff-nurse-verpleegkundige'
+]);
+
+/**
+ * Checks whether an ID or name belongs to known dummy personnel (test doctors/nurses).
+ */
+export function isDummyPersonnel(id?: string, name?: string): boolean {
+  if (id && (KNOWN_DUMMY_IDS.has(id) || KNOWN_DUMMY_IDS.has(`staff-${id}`) || KNOWN_DUMMY_IDS.has(id.replace(/^staff-/, '')))) {
+    return true;
   }
-];
+  if (!name) return false;
+  const n = name.trim().toLowerCase();
+  if (
+    n.includes('mertens') ||
+    n.includes('ceusters') ||
+    n.includes('mansour') ||
+    n.includes('nilsson') ||
+    n.includes('van camp') ||
+    n.includes('coninck') ||
+    n.includes('mieke peeters') ||
+    n.includes('de verpleegkundige') ||
+    n === 'verpleegkundige'
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Checks whether a leave request is a dummy/sample request or corrupt.
+ */
+export function isDummyLeaveRequest(req: Partial<LeaveRequest>): boolean {
+  if (!req) return true;
+  if (req.id && (req.id.startsWith('req-sample') || KNOWN_DUMMY_IDS.has(req.id))) {
+    return true;
+  }
+  if (req.staff_id && KNOWN_DUMMY_IDS.has(req.staff_id)) {
+    return true;
+  }
+  if (isDummyPersonnel(req.staff_id, req.staff_name)) {
+    return true;
+  }
+  // Corrupt record check (must have staff_id and date to be valid)
+  if (!req.staff_id || !req.date) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Flexible matching between a LeaveRequest and a StaffMember.
+ * Accounts for ID prefixes ('staff-'), activeStaffId, and staff names.
+ */
+export function isLeaveRequestForStaff(req: LeaveRequest, staff: StaffMember): boolean {
+  if (!req || !staff) return false;
+  if (req.staff_id === staff.id) return true;
+  if (staff.activeStaffId && req.staff_id === staff.activeStaffId) return true;
+  if (req.staff_id && req.staff_id.replace(/^staff-/, '') === staff.id.replace(/^staff-/, '')) return true;
+  if (req.staff_name && staff.name && req.staff_name.trim().toLowerCase() === staff.name.trim().toLowerCase()) return true;
+  return false;
+}
+
+/**
+ * Finds the matching StaffMember for a staff_id or staff_name from a staff list.
+ */
+export function findMatchingStaff(staffList: StaffMember[], staffId?: string, staffName?: string): StaffMember | undefined {
+  if (!staffList || staffList.length === 0) return undefined;
+  if (staffId) {
+    const direct = staffList.find(s => s.id === staffId);
+    if (direct) return direct;
+    const activeMatch = staffList.find(s => s.activeStaffId === staffId);
+    if (activeMatch) return activeMatch;
+    const cleanId = staffId.replace(/^staff-/, '');
+    const prefixMatch = staffList.find(s => s.id.replace(/^staff-/, '') === cleanId);
+    if (prefixMatch) return prefixMatch;
+  }
+  if (staffName && staffName.trim()) {
+    const norm = staffName.trim().toLowerCase();
+    const nameMatch = staffList.find(s => s.name.trim().toLowerCase() === norm);
+    if (nameMatch) return nameMatch;
+  }
+  return undefined;
+}
 
 /**
  * Maps JS getDay() (0=Sun, 1=Mon, ..., 6=Sat) to DayOfWeekKey (excluding weekends)
@@ -683,49 +681,10 @@ export function getStaffWeeklyScheduledSlots(schedule?: WeeklySchedule | null): 
 }
 
 /**
- * Returns default initial sample leave requests for current week
+ * Returns default initial sample leave requests (strictly empty array so no fake mock requests ever get generated).
  */
 export function getDefaultSampleLeaveRequests(): LeaveRequest[] {
-  const weekInfo = getISOWeekDetails(new Date());
-  const wednesdayDateStr = weekInfo.days[2].dateStr;
-  const thursdayDateStr = weekInfo.days[3].dateStr;
-  const fridayDateStr = weekInfo.days[4].dateStr;
-
-  return [
-    {
-      id: 'req-sample-1',
-      staff_id: 'staff-dr-mertens',
-      staff_name: 'Dr. Elisabeth Mertens',
-      date: wednesdayDateStr,
-      slot: 'VM',
-      units: 0.5,
-      type: 'regulier',
-      status: 'goedgekeurd',
-      created_at: new Date().toISOString()
-    },
-    {
-      id: 'req-sample-2',
-      staff_id: 'staff-karina',
-      staff_name: 'Karina Ceusters',
-      date: thursdayDateStr,
-      slot: 'HELE_DAG',
-      units: 1.0,
-      type: 'verplicht',
-      status: 'goedgekeurd',
-      created_at: new Date().toISOString()
-    },
-    {
-      id: 'req-sample-3',
-      staff_id: 'staff-steven',
-      staff_name: 'Steven De Coninck',
-      date: fridayDateStr,
-      slot: 'VM',
-      units: 0.5,
-      type: 'verplicht',
-      status: 'aangevraagd',
-      created_at: new Date().toISOString()
-    }
-  ];
+  return [];
 }
 
 export interface MonthCalendarDay {
@@ -901,8 +860,8 @@ export async function syncStaffBetweenConfigAndLeave(
     leaveStaffSnap.forEach(d => {
       const data = d.data() as StaffMember;
       const id = d.id;
-      // Strictly detect and delete any accidental "De verpleegkundige" records from leave_staff
-      if (isNursePlaceholder(data.name, id)) {
+      // Strictly detect and delete any dummy personnel or "De verpleegkundige" records from leave_staff
+      if (isNursePlaceholder(data.name, id) || isDummyPersonnel(id, data.name)) {
         purgeBatch.delete(docRef('leave_staff', id));
         purgeCount++;
       } else {
@@ -912,24 +871,19 @@ export async function syncStaffBetweenConfigAndLeave(
 
     if (purgeCount > 0) {
       await purgeBatch.commit();
-      console.log(`[LeaveStaff Sync] Purged ${purgeCount} placeholder 'De verpleegkundige' entries from leave_staff.`);
+      console.log(`[LeaveStaff Sync] Purged ${purgeCount} placeholder or dummy entries from leave_staff.`);
     }
 
-    // If completely empty, fallback to INITIAL_LEAVE_STAFF as base
-    if (currentLeaveStaff.length === 0) {
-      INITIAL_LEAVE_STAFF.forEach(s => {
-        if (!isNursePlaceholder(s.name, s.id)) {
-          currentLeaveStaff.push({ ...s });
-        }
-      });
-    }
+    // Filter out kiosk placeholder and dummy personnel from activeStaffList and doctors
+    const realActiveStaff = activeStaffList.filter(
+      st => !isNursePlaceholder(st.name, st.id) && !isDummyPersonnel(st.id, st.name)
+    );
+    const realDoctors = doctors.filter(
+      dr => !isNursePlaceholder(dr.name, dr.id) && !isDummyPersonnel(dr.id, dr.name)
+    );
 
     const batch = writeBatch(db);
     let batchHasOperations = false;
-
-    // Filter out kiosk placeholder from activeStaffList and doctors
-    const realActiveStaff = activeStaffList.filter(st => !isNursePlaceholder(st.name, st.id));
-    const realDoctors = doctors.filter(dr => !isNursePlaceholder(dr.name, dr.id));
 
     // 2. Synchronize realActiveStaff (Balie-medewerkers / Personeelsleden) -> leave_staff
     for (const st of realActiveStaff) {
@@ -1034,7 +988,7 @@ export async function syncStaffBetweenConfigAndLeave(
 
     // 4. Reverse sync: if there are verpleegkundigen in leave_staff not present in activeStaffList
     for (const ls of currentLeaveStaff) {
-      if (ls.role === 'verpleegkundige' && !isNursePlaceholder(ls.name, ls.id)) {
+      if (ls.role === 'verpleegkundige' && !isNursePlaceholder(ls.name, ls.id) && !isDummyPersonnel(ls.id, ls.name)) {
         const inActiveStaff = realActiveStaff.some(
           st => st.id === ls.id ||
                 st.id === ls.activeStaffId ||

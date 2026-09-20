@@ -37,6 +37,7 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
+  RotateCcw,
   Tablet,
   Database,
   Copy,
@@ -943,21 +944,34 @@ export default function AdminDashboard({
             <CalendarRange className="h-3.5 w-3.5" />
             Verlofplanning
           </button>
-
-          <button
-            onClick={() => setActiveTab('config')}
-            className={`px-3.5 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'config' 
-                ? 'bg-[#0071E3] text-white font-bold shadow-sm' 
-                : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Settings className={`h-3.5 w-3.5 ${activeTab === 'config' ? 'text-white' : 'text-[#0071E3]'}`} />
-            Configuratie & Reset
-          </button>
         </div>
 
-        <div className="flex gap-2 items-center">
+        {/* Top Bar Action Controls: Configuratie, Reset & Simuleren */}
+        <div className="flex gap-2 items-center flex-wrap">
+          {/* Configuratie Button */}
+          <button
+            onClick={() => setActiveTab('config')}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border shadow-2xs ${
+              activeTab === 'config'
+                ? 'bg-[#0071E3] text-white border-[#0071E3]'
+                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200/90'
+            }`}
+            title="Configuratie openen"
+          >
+            <Settings className="h-3.5 w-3.5 text-[#0071E3]" />
+            Configuratie
+          </button>
+
+          {/* Reset Dagdeel Button */}
+          <button
+            onClick={runDagdeelReset}
+            className="bg-amber-50 hover:bg-amber-100 text-amber-900 hover:text-amber-950 border border-amber-300 px-3 py-1.5 rounded-full text-xs font-bold cursor-pointer transition flex items-center gap-1.5 shadow-2xs"
+            title="Wissel dagdeel en reset de wachtrij"
+          >
+            <RotateCcw className="h-3.5 w-3.5 text-amber-700" />
+            Reset Dagdeel
+          </button>
+
           {/* Quick Demo Assist */}
           <button
             onClick={onAddSimulatedPatient}

@@ -40,7 +40,7 @@ export const TeamsChatAndLogModule: React.FC<TeamsChatAndLogModuleProps> = ({
   onSendTeamsMessage,
   onOpenConfig
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [activeSubView, setActiveSubView] = useState<SubView>('chat');
 
   // Chat Form State

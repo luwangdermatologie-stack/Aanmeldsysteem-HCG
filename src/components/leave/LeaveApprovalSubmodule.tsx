@@ -15,7 +15,9 @@ import {
 } from '../../types';
 import {
   DAYS_OF_WEEK,
-  getISOWeekDetails
+  getISOWeekDetails,
+  isLeaveRequestForStaff,
+  findMatchingStaff
 } from '../../services/leaveService';
 import {
   ChevronLeft,
@@ -260,7 +262,7 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
 
     // Look for leave request on this date and slot
     const req = leaveRequests.find(r => {
-      if (r.staff_id !== staff.id || r.date !== dateStr) return false;
+      if (!isLeaveRequestForStaff(r, staff) || r.date !== dateStr) return false;
       const rSlot = (r.slot || '').toUpperCase();
       if (rSlot === 'HELE_DAG') return true;
       if (slot.toUpperCase() === rSlot) return true;
@@ -545,7 +547,7 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
     return leaveRequests
       .filter(r => {
         if (filterStatus !== 'all' && r.status !== filterStatus) return false;
-        const staff = staffList.find(s => s.id === r.staff_id);
+        const staff = findMatchingStaff(staffList, r.staff_id, r.staff_name);
         if (filterRole !== 'all' && staff?.role !== filterRole) return false;
         if (searchTerm.trim()) {
           const term = searchTerm.toLowerCase();
@@ -1450,7 +1452,7 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                   </tr>
                 ) : (
                   filteredQueueRequests.map(r => {
-                    const staff = staffList.find(s => s.id === r.staff_id);
+                    const staff = findMatchingStaff(staffList, r.staff_id, r.staff_name);
 
                     return (
                       <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">

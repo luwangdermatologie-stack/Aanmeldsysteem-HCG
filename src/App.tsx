@@ -10,7 +10,7 @@ import AdminDashboard from './components/AdminDashboard';
 import PinLockModal from './components/PinLockModal';
 import { executeGdprAnonymization } from './services/gdprService';
 import { getAccessToken, backupTimesheetsToGoogleSheets } from './services/googleSheetsService';
-import { syncStaffBetweenConfigAndLeave } from './services/leaveService';
+import { syncStaffBetweenConfigAndLeave, isDummyPersonnel } from './services/leaveService';
 import { 
   Monitor, 
   RotateCcw, 
@@ -28,73 +28,6 @@ import {
 } from 'lucide-react';
 import { db, col, docRef, getDetectedEnvironment, initializeDatabaseIfEmpty, handleFirestoreError, OperationType, sanitizeForFirestore } from './firebase';
 import { setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, getDocs } from 'firebase/firestore';
-
-const INITIAL_DOCTORS: Doctor[] = [
-  { id: 'dr-mertens', name: 'Dr. Elisabeth Mertens', specialty: 'Algemene Dermatologie', waitingRoom: 'Gelijkvloers', isAvailable: true, avatarColor: 'bg-teal-500' },
-  { id: 'dr-vancamp', name: 'Dr. Jasper Van Camp', specialty: 'Huidkanker & Dermatochirurgie', waitingRoom: 'Bovenverdieping', isAvailable: true, avatarColor: 'bg-rose-500' },
-  { id: 'dr-nilsson', name: 'Dr. Linnea Nilsson', specialty: 'Esthetische Dermatologie', waitingRoom: 'Gelijkvloers', isAvailable: true, avatarColor: 'bg-indigo-500' },
-  { id: 'dr-mansour', name: 'Dr. Ahmed Mansour', specialty: 'Kinderdermatologie', waitingRoom: 'Bovenverdieping', isAvailable: true, avatarColor: 'bg-amber-500' }
-];
-
-const INITIAL_STAFF: ActiveStaff[] = [
-  { id: 'staff-karina', name: 'Karina Ceusters', role: 'Hoofd Receptie & Balie' },
-  { id: 'staff-steven', name: 'Steven De Coninck', role: 'Secretariaat' },
-  { id: 'staff-mieke', name: 'Mieke Peeters', role: 'Medisch Assistent' }
-];
-
-const PRELOADED_PATIENTS: Patient[] = [
-  {
-    id: 'pat-1',
-    firstName: 'Wouter',
-    lastName: 'Swinnen',
-    birthDate: '12/04/1978',
-    nationalRegistryNum: '78.04.12-235.61',
-    idCardNum: '592-8032745-12',
-    appointmentTime: '08:45',
-    doctorId: 'dr-mertens',
-    doctorName: 'Dr. Elisabeth Mertens',
-    hasAppointment: true,
-    flowType: 'appointment',
-    arrivalTime: '08:38:12',
-    arrivalDate: '2026-06-14',
-    waitingRoom: 'Gelijkvloers',
-    status: 'Waiting'
-  },
-  {
-    id: 'pat-2',
-    firstName: 'Annelies',
-    lastName: 'Maes',
-    birthDate: '29/11/1992',
-    nationalRegistryNum: '92.11.29-412.38',
-    idCardNum: '592-3453821-93',
-    appointmentTime: '09:12', // late compared to arrival if checking morning
-    doctorId: 'dr-vancamp',
-    doctorName: 'Dr. Jasper Van Camp',
-    hasAppointment: true,
-    flowType: 'appointment',
-    arrivalTime: '09:21:44',
-    arrivalDate: '2026-06-14',
-    waitingRoom: 'Bovenverdieping',
-    status: 'Called'
-  },
-  {
-    id: 'pat-3',
-    firstName: 'Zeynep',
-    lastName: 'Kaya',
-    birthDate: '-',
-    nationalRegistryNum: '88.05.20-112.54',
-    idCardNum: '',
-    appointmentTime: undefined,
-    doctorId: undefined,
-    doctorName: undefined,
-    hasAppointment: false,
-    flowType: 'patient_info',
-    arrivalTime: '09:45:01',
-    arrivalDate: '2026-06-14',
-    waitingRoom: 'Gelijkvloers',
-    status: 'Waiting'
-  }
-];
 
 export default function App() {
   const [viewMode, setViewMode] = useState<'split' | 'kiosk' | 'admin'>(() => {
@@ -146,7 +79,7 @@ export default function App() {
   });
   const [systemConfig, setSystemConfig] = useState<SystemConfig>({
     currentDagdeel: 'ochtend',
-    activeStaffId: 'staff-karina',
+    activeStaffId: '',
     teamsWebhookUrl: ''
   });
   const [notifications, setNotifications] = useState<TeamsNotification[]>([]);
@@ -413,13 +346,17 @@ export default function App() {
       const doctorsList: Doctor[] = [];
       snapshot.forEach((doc) => {
         const d = doc.data() as Doctor;
-        // Strictly ignore and exclude the kiosk placeholder "De verpleegkundige"
+        // Strictly ignore and exclude dummy doctors and placeholder "De verpleegkundige"
         if (
           d.id !== 'nurse-verpleegkundige' &&
           d.name?.toLowerCase().trim() !== 'de verpleegkundige' &&
-          d.name?.toLowerCase().trim() !== 'verpleegkundige'
+          d.name?.toLowerCase().trim() !== 'verpleegkundige' &&
+          !isDummyPersonnel(d.id, d.name)
         ) {
           doctorsList.push(d);
+        } else if (isDummyPersonnel(d.id, d.name)) {
+          // Immediately purge dummy doc from Firestore if found
+          deleteDoc(doc.ref).catch(() => {});
         }
       });
       // Keep doctors in order or sort by id
@@ -440,9 +377,13 @@ export default function App() {
         if (
           s.id !== 'nurse-verpleegkundige' &&
           s.name?.toLowerCase().trim() !== 'de verpleegkundige' &&
-          s.name?.toLowerCase().trim() !== 'verpleegkundige'
+          s.name?.toLowerCase().trim() !== 'verpleegkundige' &&
+          !isDummyPersonnel(s.id, s.name)
         ) {
           staffList.push(s);
+        } else if (isDummyPersonnel(s.id, s.name)) {
+          // Immediately purge dummy doc from Firestore if found
+          deleteDoc(doc.ref).catch(() => {});
         }
       });
       staffList.sort((a, b) => a.id.localeCompare(b.id));

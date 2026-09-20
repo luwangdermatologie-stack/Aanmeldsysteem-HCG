@@ -28,7 +28,7 @@ import {
   Doctor,
   SystemConfig
 } from '../../types';
-import { INITIAL_LEAVE_STAFF, getDefaultSampleLeaveRequests, syncStaffBetweenConfigAndLeave } from '../../services/leaveService';
+import { syncStaffBetweenConfigAndLeave, isDummyPersonnel, isDummyLeaveRequest, isLeaveRequestForStaff } from '../../services/leaveService';
 import { backupLeaveToGoogleSheets, downloadLeaveCsv } from '../../services/leaveSheetsBackup';
 import { getAccessToken } from '../../services/googleSheetsService';
 import { BackupRestoreModal } from '../BackupRestoreModal';
@@ -92,12 +92,14 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       const cached = localStorage.getItem('derm_leave_staff_store');
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter((s: StaffMember) => !isDummyPersonnel(s.id, s.name));
+        }
       }
     } catch (e) {
       console.warn("Could not read leave staff store", e);
     }
-    return INITIAL_LEAVE_STAFF;
+    return [];
   });
 
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => {
@@ -105,7 +107,9 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       const cached = localStorage.getItem('derm_leave_requests_store');
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.filter((r: LeaveRequest) => !isDummyLeaveRequest(r));
+        }
       }
     } catch (e) {
       console.warn("Could not read leave requests store", e);
@@ -193,8 +197,12 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         if (!snapshot.empty) {
           const list: StaffMember[] = [];
           snapshot.forEach(d => {
-            const data = d.data();
-            list.push({ ...data, id: d.id } as StaffMember);
+            const data = d.data() as StaffMember;
+            if (isDummyPersonnel(d.id, data.name)) {
+              deleteDoc(d.ref).catch(() => {});
+            } else {
+              list.push({ ...data, id: d.id });
+            }
           });
           // Sort: Doctors first, then nurses, alphabetically
           list.sort((a, b) => {
@@ -220,8 +228,12 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       snapshot => {
         const list: LeaveRequest[] = [];
         snapshot.forEach(d => {
-          const data = d.data();
-          list.push({ ...data, id: d.id } as LeaveRequest);
+          const data = d.data() as Partial<LeaveRequest>;
+          if (isDummyLeaveRequest(data) || !data.staff_id || !data.date) {
+            deleteDoc(d.ref).catch(() => {});
+          } else {
+            list.push({ ...data, id: d.id } as LeaveRequest);
+          }
         });
         setLeaveRequests(list);
         try {
@@ -634,8 +646,20 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
   // --- Leave Requests (Approvals & Status) ---
   const handleUpdateLeaveStatus = async (requestId: string, newStatus: LeaveStatus, note?: string) => {
+    let fullUpdated: LeaveRequest | undefined;
+
     setLeaveRequests(prev => {
-      const next = prev.map(r => r.id === requestId ? { ...r, status: newStatus, ...(note !== undefined ? { note } : {}) } : r);
+      const next = prev.map(r => {
+        if (r.id === requestId) {
+          fullUpdated = {
+            ...r,
+            status: newStatus,
+            ...(note !== undefined ? { note } : {})
+          };
+          return fullUpdated;
+        }
+        return r;
+      });
       try {
         localStorage.setItem('derm_leave_requests_store', JSON.stringify(next));
       } catch (e) {}
@@ -643,19 +667,32 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     });
 
     try {
-      const payload: Record<string, any> = { status: newStatus };
-      if (note !== undefined) {
-        payload.note = note;
+      if (fullUpdated) {
+        // ALWAYS write the complete sanitized document so staff_id, date, slot etc. are never lost!
+        await setDoc(docRef('leave_requests', requestId), sanitizeForFirestore(fullUpdated), { merge: true });
+      } else {
+        const payload: Record<string, any> = { status: newStatus };
+        if (note !== undefined) {
+          payload.note = note;
+        }
+        await setDoc(docRef('leave_requests', requestId), payload, { merge: true });
       }
-      await setDoc(docRef('leave_requests', requestId), payload, { merge: true });
     } catch (err) {
       console.warn('Firestore update leave status failed, updated locally:', err);
     }
   };
 
   const handleUpdateLeaveNote = async (requestId: string, note: string) => {
+    let fullUpdated: LeaveRequest | undefined;
+
     setLeaveRequests(prev => {
-      const next = prev.map(r => r.id === requestId ? { ...r, note } : r);
+      const next = prev.map(r => {
+        if (r.id === requestId) {
+          fullUpdated = { ...r, note };
+          return fullUpdated;
+        }
+        return r;
+      });
       try {
         localStorage.setItem('derm_leave_requests_store', JSON.stringify(next));
       } catch (e) {}
@@ -663,7 +700,11 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     });
 
     try {
-      await setDoc(docRef('leave_requests', requestId), { note }, { merge: true });
+      if (fullUpdated) {
+        await setDoc(docRef('leave_requests', requestId), sanitizeForFirestore(fullUpdated), { merge: true });
+      } else {
+        await setDoc(docRef('leave_requests', requestId), { note }, { merge: true });
+      }
     } catch (err) {
       console.warn('Firestore update leave note failed, updated locally:', err);
     }
@@ -686,8 +727,17 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   };
 
   const handleBatchApproveAllPending = async () => {
+    const updatedDocs: LeaveRequest[] = [];
+
     setLeaveRequests(prev => {
-      const next = prev.map(r => r.status === 'aangevraagd' ? { ...r, status: 'goedgekeurd' as LeaveStatus } : r);
+      const next = prev.map(r => {
+        if (r.status === 'aangevraagd') {
+          const approved = { ...r, status: 'goedgekeurd' as LeaveStatus };
+          updatedDocs.push(approved);
+          return approved;
+        }
+        return r;
+      });
       try {
         localStorage.setItem('derm_leave_requests_store', JSON.stringify(next));
       } catch (e) {}
@@ -696,9 +746,9 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
     try {
       const batch = writeBatch(db);
-      const pending = leaveRequests.filter(r => r.status === 'aangevraagd');
-      pending.forEach(r => {
-        batch.set(docRef('leave_requests', r.id), { status: 'goedgekeurd' }, { merge: true });
+      updatedDocs.forEach(r => {
+        // Write the full sanitized document
+        batch.set(docRef('leave_requests', r.id), sanitizeForFirestore(r), { merge: true });
       });
       await batch.commit();
     } catch (err) {

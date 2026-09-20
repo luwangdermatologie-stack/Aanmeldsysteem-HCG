@@ -18,7 +18,8 @@ import {
   DAYS_OF_WEEK,
   getISOWeekDetails,
   calculateCompulsoryLeaveCounter,
-  validateLeaveRequest
+  validateLeaveRequest,
+  isLeaveRequestForStaff
 } from '../../services/leaveService';
 import {
   ChevronLeft,
@@ -216,7 +217,7 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
 
     // Check for active leave request on this date
     const req = leaveRequests.find(r => {
-      if (r.staff_id !== staff.id || r.date !== dateStr) return false;
+      if (!isLeaveRequestForStaff(r, staff) || r.date !== dateStr) return false;
       if (r.status === 'afgekeurd') return false; // Rejected leave does not count
       const rSlot = (r.slot || '').toUpperCase();
       if (rSlot === 'HELE_DAG') return true;
@@ -224,8 +225,8 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
       return false;
     });
 
-    // If leave request is gecompenseerd, it applies even when originally free (it's an extra moment to work!)
-    const effectiveLeaveRequest = (isScheduled || req?.type === 'gecompenseerd') ? req : undefined;
+    // An active leave request (approved or requested) always applies and shows in the schema
+    const effectiveLeaveRequest = req;
 
     return {
       isScheduled,
@@ -1103,6 +1104,34 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                   ) : (
                     /* Normal Leave (Regulier or Verplicht) */
                     <>
+                      {/* Direct Approve button if pending */}
+                      {activeQuickSlot.currentLeave.status === 'aangevraagd' && onUpdateLeaveStatus && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const reqId = activeQuickSlot.currentLeave!.id;
+                            setActiveQuickSlot(null);
+                            onUpdateLeaveStatus(reqId, 'goedgekeurd');
+                          }}
+                          className="w-full p-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-between transition cursor-pointer group shadow-2xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-800 text-white flex items-center justify-center font-bold shrink-0">
+                              <Check className="w-4 h-4 stroke-[3]" />
+                            </div>
+                            <div className="text-left">
+                              <span className="font-extrabold text-xs block">
+                                Verlofaanvraag Direct Goedkeuren
+                              </span>
+                              <span className="text-[11px] text-emerald-100">
+                                Keurt deze aanvraag goed en bevestigt dit in het schema
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-xs font-bold text-emerald-100 shrink-0">Goedkeuren ✓</span>
+                        </button>
+                      )}
+
                       {/* Switch to Regulier */}
                       {activeQuickSlot.currentLeave.type === 'verplicht' && (
                         <button
@@ -1450,15 +1479,19 @@ const InteractiveSlotCell: React.FC<InteractiveSlotCellProps> = ({ status, staff
           className={`w-full h-9 rounded-lg flex flex-col items-center justify-center p-0.5 shadow-2xs transition cursor-pointer group ${
             isPending
               ? 'bg-amber-50 hover:bg-amber-100 border-2 border-dashed border-amber-400 text-amber-950'
-              : 'bg-amber-100 hover:bg-amber-200/90 border border-amber-300 text-amber-950'
+              : 'bg-amber-100 hover:bg-amber-200/90 border border-amber-400 text-amber-950'
           }`}
         >
           <div className="flex items-center gap-1">
             <Sparkles className="w-3 h-3 text-amber-700 group-hover:scale-110 transition-transform" />
-            {isPending && <Clock className="w-2.5 h-2.5 text-amber-600" />}
+            {isPending ? (
+              <Clock className="w-2.5 h-2.5 text-amber-600 animate-pulse" />
+            ) : (
+              <Check className="w-2.5 h-2.5 text-amber-800 stroke-[3]" />
+            )}
           </div>
           <span className="text-[9px] font-black leading-none mt-0.5 text-amber-900">
-            {isPending ? 'Verpl. (Aanvr)' : 'Verpl.'}
+            {isPending ? 'Verpl. (Aanvr)' : 'Verpl. ✓'}
           </span>
         </button>
       );
@@ -1472,15 +1505,19 @@ const InteractiveSlotCell: React.FC<InteractiveSlotCellProps> = ({ status, staff
         className={`w-full h-9 rounded-lg flex flex-col items-center justify-center p-0.5 shadow-2xs transition cursor-pointer group ${
           isPending
             ? 'bg-indigo-50 hover:bg-indigo-100 border-2 border-dashed border-indigo-400 text-indigo-950'
-            : 'bg-indigo-100 hover:bg-indigo-200/90 border border-indigo-300 text-indigo-950'
+            : 'bg-indigo-100 hover:bg-indigo-200/90 border border-indigo-400 text-indigo-950'
         }`}
       >
         <div className="flex items-center gap-1">
           <ShieldCheck className="w-3 h-3 text-indigo-700 group-hover:scale-110 transition-transform" />
-          {isPending && <Clock className="w-2.5 h-2.5 text-indigo-600" />}
+          {isPending ? (
+            <Clock className="w-2.5 h-2.5 text-indigo-600 animate-pulse" />
+          ) : (
+            <Check className="w-2.5 h-2.5 text-indigo-800 stroke-[3]" />
+          )}
         </div>
         <span className="text-[9px] font-black leading-none mt-0.5 text-indigo-900">
-          {isPending ? 'Verlof (Aanvr)' : 'Verlof'}
+          {isPending ? 'Verlof (Aanvr)' : 'Verlof ✓'}
         </span>
       </button>
     );
