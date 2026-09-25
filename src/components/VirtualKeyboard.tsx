@@ -96,9 +96,9 @@ export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
 
   const activeRows = layout === 'AZERTY' ? azertyRows : qwertyRows;
 
-  // Dynamic key heights based on compact mode to maximize visible form area
-  const keyHeightClass = isCompact ? 'h-8 sm:h-9 text-xs sm:text-sm' : 'h-9 sm:h-10 text-sm sm:text-base';
-  const numKeyHeightClass = isCompact ? 'h-9 sm:h-10 text-base sm:text-lg' : 'h-10 sm:h-11 text-lg sm:text-xl';
+  // Dynamic key heights based on compact mode to maximize visible form area & tablet finger accuracy
+  const keyHeightClass = isCompact ? 'h-10 sm:h-11 text-sm sm:text-base font-semibold' : 'h-12 sm:h-14 text-base sm:text-lg font-bold';
+  const numKeyHeightClass = isCompact ? 'h-12 sm:h-14 text-xl sm:text-2xl font-bold' : 'h-14 sm:h-16 text-2xl sm:text-3xl font-extrabold';
 
   return (
     <div 

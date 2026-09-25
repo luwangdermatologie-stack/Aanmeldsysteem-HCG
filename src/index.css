@@ -68,6 +68,23 @@
   outline: none !important;
 }
 
+/* Tablet Kiosk Accessibility & Large View Sizing */
+.kiosk-tablet-large {
+  font-size: 1.125rem; /* Base 18px */
+}
+
+.kiosk-tablet-large input,
+.kiosk-tablet-large select,
+.kiosk-tablet-large textarea {
+  font-size: 1.125rem !important; /* 18px for crystal clear readability on tablets */
+  line-height: 1.5rem !important;
+}
+
+.kiosk-tablet-large input::placeholder,
+.kiosk-tablet-large textarea::placeholder {
+  font-size: 1rem !important;
+}
+
 /* Subtle Apple specular shine highlight */
 .apple-specular {
   position: relative;

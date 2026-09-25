@@ -124,18 +124,6 @@ export function setEnvironmentOverride(env: AppEnvironment | null) {
  *   Uses 'test_' prefixed collection names (e.g. 'test_patients', 'test_doctors', 'test_staff')
  */
 export function getEnvCollectionName(baseCollection: string, targetEnv?: AppEnvironment): string {
-  // Personnel and Verlofplanning collections:
-  // 'doctors', 'staff', 'leave_staff', 'leave_requests', 'leave_comments', 'leave_todos', 'leave_config'
-  // contain permanent operational clinic personnel and leave schedule data.
-  // They are strictly unified across environments so updates NEVER lose, partition, or seed test dummies into personnel files.
-  if (
-    baseCollection === 'doctors' ||
-    baseCollection === 'staff' ||
-    baseCollection.startsWith('leave_')
-  ) {
-    return baseCollection;
-  }
-
   const env = targetEnv || getDetectedEnvironment();
   if (env === 'test') {
     return `test_${baseCollection}`;

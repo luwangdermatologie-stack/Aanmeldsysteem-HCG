@@ -47,7 +47,8 @@ import {
   FileText,
   RefreshCw,
   Sparkles,
-  Briefcase
+  Briefcase,
+  Info
 } from 'lucide-react';
 
 export interface LeaveApprovalSubmoduleProps {
@@ -140,6 +141,11 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
   const [filterStatus, setFilterStatus] = useState<string>('aangevraagd');
   const [filterRole, setFilterRole] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Rejection reason modal state
+  const [rejectModalRequest, setRejectModalRequest] = useState<LeaveRequest | null>(null);
+  const [rejectReasonText, setRejectReasonText] = useState<string>('');
+  const [rejectReasonError, setRejectReasonError] = useState<string | null>(null);
 
   // Keep author IDs aligned when staffList loads or changes
   React.useEffect(() => {
@@ -557,7 +563,7 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
     }
   };
 
-  // Direct one-click approve & reject right from the week schedule grid
+  // Direct one-click approve from the week schedule grid
   const handleDirectApprove = async (requestId: string) => {
     try {
       await onUpdateStatus(requestId, 'goedgekeurd');
@@ -566,11 +572,34 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
     }
   };
 
-  const handleDirectReject = async (requestId: string) => {
+  // Direct reject opens the rejection modal requiring a reason
+  const handleDirectReject = (target: LeaveRequest | string) => {
+    const req = typeof target === 'string' ? leaveRequests.find(r => r.id === target) : target;
+    if (req) {
+      setRejectModalRequest(req);
+      setRejectReasonText('');
+      setRejectReasonError(null);
+    }
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectModalRequest) return;
+    const trimmed = rejectReasonText.trim();
+    if (!trimmed) {
+      setRejectReasonError('Gelieve een reden voor de afkeuring in te vullen.');
+      return;
+    }
     try {
-      await onUpdateStatus(requestId, 'afgekeurd');
+      await onUpdateStatus(rejectModalRequest.id, 'afgekeurd', trimmed);
+      setRejectModalRequest(null);
+      setRejectReasonText('');
+      setRejectReasonError(null);
+      if (activeApprovalSlot?.leaveRequest?.id === rejectModalRequest.id) {
+        setActiveApprovalSlot(null);
+      }
     } catch (err) {
-      console.error('Fout bij direct afkeuren van verlofaanvraag:', err);
+      console.error('Fout bij afkeuren van verlofaanvraag:', err);
+      setRejectReasonError('Er is een fout opgetreden bij het afkeuren.');
     }
   };
 
@@ -1588,9 +1617,9 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                             {r.status !== 'afgekeurd' && (
                               <button
                                 type="button"
-                                onClick={() => onUpdateStatus(r.id, 'afgekeurd')}
+                                onClick={() => handleDirectReject(r)}
                                 className="p-1.5 text-xs bg-red-50 hover:bg-red-100 text-red-700 rounded-lg border border-red-200 font-bold transition cursor-pointer"
-                                title="Afkeuren"
+                                title="Afkeuren met reden"
                               >
                                 Afkeuren
                               </button>
@@ -1738,33 +1767,37 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                       </p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-3 gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => handleApproveStatus('goedgekeurd')}
-                        className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition flex flex-col items-center justify-center gap-1 cursor-pointer shadow-xs"
-                      >
-                        <Check className="w-4 h-4" />
-                        <span>Goedkeuren</span>
-                      </button>
+                    <div className="space-y-3 pt-1">
+                      <div className="p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl flex items-center gap-2.5 text-xs text-amber-900">
+                        <Info className="w-4 h-4 text-amber-700 shrink-0" />
+                        <span>
+                          <strong>Goedkeuren:</strong> Goedkeuren kan direct via het groene vinkje (✓) in het weekrooster of via de wachtrijlijst.
+                        </span>
+                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleApproveStatus('on_hold')}
-                        className="py-2.5 px-3 bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs rounded-xl transition flex flex-col items-center justify-center gap-1 cursor-pointer shadow-xs"
-                      >
-                        <PauseCircle className="w-4 h-4" />
-                        <span>On Hold Zetten</span>
-                      </button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleApproveStatus('on_hold')}
+                          className="py-2.5 px-3 bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          <PauseCircle className="w-4 h-4" />
+                          <span>On Hold Zetten</span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleApproveStatus('afgekeurd')}
-                        className="py-2.5 px-3 bg-white hover:bg-red-50 text-red-700 border border-red-200 font-extrabold text-xs rounded-xl transition flex flex-col items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <X className="w-4 h-4" />
-                        <span>Afkeuren</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (activeApprovalSlot.leaveRequest) {
+                              handleDirectReject(activeApprovalSlot.leaveRequest);
+                            }
+                          }}
+                          className="py-2.5 px-3 bg-white hover:bg-red-50 text-red-700 border border-red-200 font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                          <span>Afkeuren met Reden</span>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2024,6 +2057,101 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
           </div>
         </div>
       )}
+
+      {/* REJECTION REASON MODAL */}
+      {rejectModalRequest && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 bg-red-50 border-b border-red-100 flex items-center justify-between">
+              <div className="flex items-center gap-2.5 text-red-700">
+                <div className="w-8 h-8 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                  <X className="w-4 h-4 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-red-950">Verlofaanvraag Afkeuren</h3>
+                  <p className="text-[11px] text-red-700">Geef een verplichte reden op voor deze afkeuring</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setRejectModalRequest(null);
+                  setRejectReasonText('');
+                  setRejectReasonError(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-white/80 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Request summary */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Medewerker:</span>
+                  <span className="font-bold text-slate-900">{rejectModalRequest.staff_name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Datum & Dagdeel:</span>
+                  <span className="font-bold text-slate-900">
+                    {rejectModalRequest.date} ({rejectModalRequest.slot === 'HELE_DAG' ? 'Hele dag' : rejectModalRequest.slot})
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Type:</span>
+                  <span className="font-bold text-slate-900 capitalize">{rejectModalRequest.type} verlof</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Reden van afkeuring <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={rejectReasonText}
+                  onChange={(e) => {
+                    setRejectReasonText(e.target.value);
+                    if (rejectReasonError) setRejectReasonError(null);
+                  }}
+                  placeholder="Typ hier de reden (bijv. bezettingsnorm niet gehaald, geen vervanging mogelijk)..."
+                  rows={3}
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white transition resize-none"
+                  autoFocus
+                />
+                {rejectReasonError && (
+                  <p className="text-xs text-red-600 font-medium mt-1 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{rejectReasonError}</span>
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRejectModalRequest(null);
+                    setRejectReasonText('');
+                    setRejectReasonError(null);
+                  }}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                >
+                  Annuleren
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmReject}
+                  className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Afkeuring Bevestigen</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -2041,7 +2169,7 @@ interface ApprovalScheduleSlotCellProps {
   };
   staff: StaffMember;
   onDirectApprove: (requestId: string) => void;
-  onDirectReject: (requestId: string) => void;
+  onDirectReject: (target: LeaveRequest | string) => void;
   onClick: () => void;
 }
 
@@ -2128,9 +2256,9 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onDirectReject(req.id);
+                onDirectReject(req);
               }}
-              title="Direct Afkeuren (1-klik)"
+              title="Afkeuren met reden"
               className="w-5 h-5 rounded bg-white hover:bg-red-50 text-red-600 border border-red-300 hover:border-red-400 flex items-center justify-center transition shadow-xs hover:scale-110 cursor-pointer shrink-0"
             >
               <X className="w-3 h-3 stroke-[2.5]" />
@@ -2171,9 +2299,9 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onDirectReject(req.id);
+                onDirectReject(req);
               }}
-              title="Direct Afkeuren (1-klik)"
+              title="Afkeuren met reden"
               className="w-5 h-5 rounded bg-white hover:bg-red-50 text-red-600 border border-red-300 hover:border-red-400 flex items-center justify-center transition shadow-xs hover:scale-110 cursor-pointer shrink-0"
             >
               <X className="w-3 h-3 stroke-[2.5]" />

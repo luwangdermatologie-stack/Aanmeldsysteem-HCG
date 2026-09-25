@@ -24,7 +24,9 @@ import {
   Maximize2,
   Minimize2,
   Settings,
-  Monitor
+  Monitor,
+  ZoomIn,
+  ZoomOut
 } from 'lucide-react';
 import { VirtualKeyboard } from './VirtualKeyboard';
 
@@ -62,6 +64,27 @@ export default function KioskApp({
   const [currentScreen, setCurrentScreen] = useState<'home' | 'f1_patient_type' | 'f1_details' | 'f1_appointment' | 'f1_success' | 'f2_choice' | 'f2_patient_form' | 'f2_success' | 'help_form' | 'help_success'>('home');
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [currentTimeStr, setCurrentTimeStr] = useState('');
+
+  // Tablet readability scaling mode: 'normal' | 'large' (default 'large' for optimal tablet visibility)
+  const [textSizeMode, setTextSizeMode] = useState<'normal' | 'large'>(() => {
+    try {
+      const stored = localStorage.getItem('kiosk_text_size_mode');
+      if (stored === 'normal' || stored === 'large') return stored;
+    } catch (e) {
+      // Ignore
+    }
+    return 'large';
+  });
+
+  const handleToggleTextSize = () => {
+    const next = textSizeMode === 'large' ? 'normal' : 'large';
+    setTextSizeMode(next);
+    try {
+      localStorage.setItem('kiosk_text_size_mode', next);
+    } catch (e) {
+      // Ignore
+    }
+  };
 
   const [helpCooldown, setHelpCooldown] = useState(false);
 
@@ -166,7 +189,7 @@ export default function KioskApp({
   const [appointmentTime, setAppointmentTime] = useState('');
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
 
-  // Available practitioners including "De verpleegkundige" (always on Gelijkvloers)
+  // Available practitioners / visit reasons including "De verpleegkundige" and "Laser" (both on Gelijkvloers)
   const availableDoctors = useMemo(() => {
     const list = [...(doctors || [])];
     if (!list.some(d => d.id === 'nurse-verpleegkundige' || d.name.toLowerCase().includes('verpleegkundige'))) {
@@ -177,6 +200,16 @@ export default function KioskApp({
         waitingRoom: 'Gelijkvloers',
         isAvailable: true,
         avatarColor: 'bg-emerald-500'
+      });
+    }
+    if (!list.some(d => d.id === 'treatment-laser' || d.name.toLowerCase() === 'laser')) {
+      list.push({
+        id: 'treatment-laser',
+        name: 'Laser',
+        specialty: 'Laserbehandeling',
+        waitingRoom: 'Gelijkvloers',
+        isAvailable: true,
+        avatarColor: 'bg-violet-500'
       });
     }
     return list;
@@ -616,9 +649,13 @@ export default function KioskApp({
     const late = checkIsLate(appointmentTime);
     setIsPatientLate(late);
 
-    // "De verpleegkundige zit altijd op gelijkvloers"
-    const isNurse = (doctor.id === 'nurse-verpleegkundige') || doctor.name.toLowerCase().includes('verpleegkundige');
-    const assignedRoom = isNurse ? 'Gelijkvloers' : doctor.waitingRoom;
+    // "De verpleegkundige" en "Laser" zitten altijd op het gelijkvloers
+    const isNurseOrGroundTreatment = 
+      (doctor.id === 'nurse-verpleegkundige') || 
+      doctor.name.toLowerCase().includes('verpleegkundige') ||
+      doctor.id === 'treatment-laser' ||
+      doctor.name.toLowerCase() === 'laser';
+    const assignedRoom = isNurseOrGroundTreatment ? 'Gelijkvloers' : doctor.waitingRoom;
     setResolvedRoom(assignedRoom);
 
     if (late) {
@@ -772,16 +809,45 @@ export default function KioskApp({
 
   return (
     <div 
-      className={`relative flex flex-col justify-between bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] text-slate-800 select-none transition-all duration-300 w-full min-h-screen p-4 sm:p-6 md:p-8 overflow-y-auto ${
+      className={`relative flex flex-col justify-between bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] text-slate-800 select-none transition-all duration-300 w-full min-h-screen p-4 sm:p-7 md:p-10 overflow-y-auto ${
+        textSizeMode === 'large' ? 'kiosk-tablet-large' : ''
+      } ${
         showVirtualKeyboard ? 'pb-72 sm:pb-80 md:pb-96' : ''
       }`}
       dir={isCurrentRtl ? 'rtl' : 'ltr'}
     >
       {/* High-End Clinic Brand Header Decorator - Apple Glass Bar */}
-      <div className="flex justify-end items-center border-b border-black/5 pb-3 mb-2">
-        <div className="flex items-center gap-2 text-xs font-mono text-slate-500">
-          <span className="flex items-center gap-1 bg-white/70 px-2.5 py-1 rounded-full border border-black/5 shadow-2xs backdrop-blur-xs">
-            <Clock className="h-3.5 w-3.5 text-[#0071E3]" />
+      <div className="flex justify-between items-center border-b border-black/5 pb-3 mb-3">
+        <div className="flex items-center gap-2">
+          {/* Tablet Big Font / Readability Toggle */}
+          <button
+            id="btn-kiosk-toggle-zoom"
+            type="button"
+            onClick={handleToggleTextSize}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all text-xs font-semibold cursor-pointer shadow-2xs backdrop-blur-xs ${
+              textSizeMode === 'large'
+                ? 'bg-blue-500/10 border-blue-500/30 text-[#0071E3]'
+                : 'bg-white/70 border-black/5 text-slate-600 hover:text-slate-900'
+            }`}
+            title={textSizeMode === 'large' ? 'Klik voor standaard weergave' : 'Klik voor extra grote tabletweergave'}
+          >
+            {textSizeMode === 'large' ? (
+              <>
+                <ZoomOut className="h-4 w-4 text-[#0071E3]" />
+                <span className="font-bold">Grote letters: AAN</span>
+              </>
+            ) : (
+              <>
+                <ZoomIn className="h-4 w-4 text-slate-500" />
+                <span>Tekst vergroten (Tablet)</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 font-mono text-slate-600">
+          <span className="flex items-center gap-1.5 bg-white/80 px-3.5 py-1.5 rounded-full border border-black/5 shadow-2xs backdrop-blur-xs font-bold text-sm">
+            <Clock className="h-4 w-4 text-[#0071E3]" />
             {currentTimeStr || "00:00:00"}
           </span>
         </div>
@@ -790,22 +856,22 @@ export default function KioskApp({
       {/* RENDER ACTIVE SCREEN */}
       <div className={`flex-1 flex flex-col justify-center items-center py-2 transition-all duration-300 ${showVirtualKeyboard ? 'justify-start pt-1' : ''}`}>
         {currentScreen === 'home' && (
-          <div className="w-full text-center max-w-xl animate-fade-in">
-            <h1 className="text-2xl sm:text-3xl font-sans text-slate-900 font-bold mb-6 tracking-tight">
+          <div className="w-full text-center max-w-2xl animate-fade-in px-2">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-sans text-slate-900 font-extrabold mb-8 tracking-tight">
               {t.welcomeTitle}
             </h1>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6 w-full">
               <button
                 id="btn-kiosk-has-appointment"
                 onClick={startFlow1}
-                className="group relative flex flex-col items-center justify-center p-6 rounded-2xl apple-glass-card apple-glass-card-hover apple-glass-card-active text-slate-900 font-bold text-base cursor-pointer h-40 border border-white/80"
+                className="group relative flex flex-col items-center justify-center p-7 sm:p-9 rounded-3xl apple-glass-card apple-glass-card-hover apple-glass-card-active text-slate-900 font-extrabold cursor-pointer min-h-[200px] sm:min-h-[230px] border border-white/80 shadow-md"
               >
-                <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-500 to-sky-400 text-white flex items-center justify-center mb-3 shadow-md shadow-blue-500/25 group-hover:scale-110 transition-transform duration-300">
-                  <Calendar className="h-6 w-6" />
+                <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl sm:rounded-3xl bg-gradient-to-tr from-blue-500 to-sky-400 text-white flex items-center justify-center mb-4 shadow-lg shadow-blue-500/25 group-hover:scale-110 transition-transform duration-300">
+                  <Calendar className="h-8 w-8 sm:h-10 sm:w-10" />
                 </div>
-                <span className="tracking-tight">{t.hasAppointmentBtn}</span>
-                <span className="text-[11px] font-normal text-slate-500 mt-1">
+                <span className="text-xl sm:text-2xl tracking-tight text-center">{t.hasAppointmentBtn}</span>
+                <span className="text-xs sm:text-sm font-medium text-slate-500 mt-2 text-center max-w-[240px]">
                   Ik heb reeds een tijdstip gereserveerd
                 </span>
               </button>
@@ -813,26 +879,26 @@ export default function KioskApp({
               <button
                 id="btn-kiosk-no-appointment"
                 onClick={startFlow2}
-                className="group relative flex flex-col items-center justify-center p-6 rounded-2xl apple-glass-card apple-glass-card-hover apple-glass-card-active text-slate-900 font-bold text-base cursor-pointer h-40 border border-white/80"
+                className="group relative flex flex-col items-center justify-center p-7 sm:p-9 rounded-3xl apple-glass-card apple-glass-card-hover apple-glass-card-active text-slate-900 font-extrabold cursor-pointer min-h-[200px] sm:min-h-[230px] border border-white/80 shadow-md"
               >
-                <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-slate-200 to-slate-100 text-slate-700 flex items-center justify-center mb-3 shadow-sm group-hover:scale-110 transition-transform duration-300 border border-black/5">
-                  <User className="h-6 w-6 text-slate-700" />
+                <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl sm:rounded-3xl bg-gradient-to-tr from-slate-200 to-slate-100 text-slate-700 flex items-center justify-center mb-4 shadow-sm group-hover:scale-110 transition-transform duration-300 border border-black/5">
+                  <User className="h-8 w-8 sm:h-10 sm:w-10 text-slate-700" />
                 </div>
-                <span className="tracking-tight">{t.noAppointmentBtn}</span>
-                <span className="text-[11px] font-normal text-slate-500 mt-1">
+                <span className="text-xl sm:text-2xl tracking-tight text-center">{t.noAppointmentBtn}</span>
+                <span className="text-xs sm:text-sm font-medium text-slate-500 mt-2 text-center max-w-[240px]">
                   Aangemeld voor inlichtingen of levering
                 </span>
               </button>
             </div>
 
-            <div className="mt-5 flex justify-center w-full">
+            <div className="mt-8 flex justify-center w-full">
               <button
                 id="btn-kiosk-help"
                 onClick={handleHelpClick}
                 disabled={helpCooldown}
-                className="group relative flex items-center justify-center gap-2 p-3 rounded-xl bg-white/60 hover:bg-white border border-black/5 text-slate-600 hover:text-slate-900 font-medium text-xs shadow-2xs transition-all duration-200 cursor-pointer w-full max-w-sm disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-xs"
+                className="group relative flex items-center justify-center gap-3 py-4 px-6 rounded-2xl bg-white/80 hover:bg-white border border-black/10 text-slate-700 hover:text-slate-900 font-bold text-sm sm:text-base shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer w-full max-w-md disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-md active:scale-98"
               >
-                <Info className="h-4 w-4 text-[#0071E3]" />
+                <Info className="h-5 w-5 sm:h-6 sm:w-6 text-[#0071E3] shrink-0" />
                 <span>{t.helpBtnText}</span>
               </button>
             </div>
@@ -841,30 +907,30 @@ export default function KioskApp({
 
         {/* FLOW 1: NEW VS KNOWN PATIENT SELECTION (Step 1 of 3) */}
         {currentScreen === 'f1_patient_type' && (
-          <div className="w-full max-w-xl animate-fade-in flex flex-col h-full justify-between">
+          <div className="w-full max-w-2xl animate-fade-in flex flex-col h-full justify-between">
             <div>
-              <div className="flex justify-between items-start mb-4">
+              <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h2 className="text-xl font-sans font-bold text-slate-900 tracking-tight">{t.patientTypeTitle}</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">{t.patientTypeSub}</p>
+                  <h2 className="text-2xl sm:text-3xl font-sans font-extrabold text-slate-900 tracking-tight">{t.patientTypeTitle}</h2>
+                  <p className="text-sm sm:text-base text-slate-500 mt-1">{t.patientTypeSub}</p>
                 </div>
-                <span className="text-xs font-semibold bg-blue-500/10 text-[#0071E3] border border-blue-500/20 px-3 py-1 rounded-full font-mono">
+                <span className="text-sm font-bold bg-blue-500/10 text-[#0071E3] border border-blue-500/25 px-4 py-1.5 rounded-full font-mono">
                   Stap 1 van 3
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full mt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 w-full mt-4">
                 <button
                   id="btn-kiosk-known-patient"
                   type="button"
                   onClick={() => handleSelectPatientType('known')}
-                  className="group relative flex flex-col items-center justify-center p-6 rounded-2xl apple-glass-card apple-glass-card-hover apple-glass-card-active text-slate-900 font-bold text-base cursor-pointer min-h-[160px] border border-white/80"
+                  className="group relative flex flex-col items-center justify-center p-7 sm:p-9 rounded-3xl apple-glass-card apple-glass-card-hover apple-glass-card-active text-slate-900 font-extrabold cursor-pointer min-h-[210px] sm:min-h-[240px] border border-white/80 shadow-md"
                 >
-                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center mb-3 shadow-md shadow-emerald-500/25 group-hover:scale-110 transition-transform duration-300">
-                    <UserCheck className="h-6 w-6" />
+                  <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl sm:rounded-3xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/25 group-hover:scale-110 transition-transform duration-300">
+                    <UserCheck className="h-8 w-8 sm:h-10 sm:w-10" />
                   </div>
-                  <span className="tracking-tight text-center">{t.knownPatientOption}</span>
-                  <span className="text-[11px] font-normal text-slate-500 mt-1.5 text-center leading-tight">
+                  <span className="text-xl sm:text-2xl tracking-tight text-center">{t.knownPatientOption}</span>
+                  <span className="text-xs sm:text-sm font-medium text-slate-500 mt-2 text-center leading-snug max-w-[220px]">
                     {t.knownPatientSub}
                   </span>
                 </button>
@@ -873,26 +939,26 @@ export default function KioskApp({
                   id="btn-kiosk-new-patient"
                   type="button"
                   onClick={() => handleSelectPatientType('new')}
-                  className="group relative flex flex-col items-center justify-center p-6 rounded-2xl apple-glass-card apple-glass-card-hover apple-glass-card-active text-slate-900 font-bold text-base cursor-pointer min-h-[160px] border border-white/80"
+                  className="group relative flex flex-col items-center justify-center p-7 sm:p-9 rounded-3xl apple-glass-card apple-glass-card-hover apple-glass-card-active text-slate-900 font-extrabold cursor-pointer min-h-[210px] sm:min-h-[240px] border border-white/80 shadow-md"
                 >
-                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-500 to-sky-400 text-white flex items-center justify-center mb-3 shadow-md shadow-blue-500/25 group-hover:scale-110 transition-transform duration-300">
-                    <UserPlus className="h-6 w-6" />
+                  <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl sm:rounded-3xl bg-gradient-to-tr from-blue-500 to-sky-400 text-white flex items-center justify-center mb-4 shadow-lg shadow-blue-500/25 group-hover:scale-110 transition-transform duration-300">
+                    <UserPlus className="h-8 w-8 sm:h-10 sm:w-10" />
                   </div>
-                  <span className="tracking-tight text-center">{t.newPatientOption}</span>
-                  <span className="text-[11px] font-normal text-slate-500 mt-1.5 text-center leading-tight">
+                  <span className="text-xl sm:text-2xl tracking-tight text-center">{t.newPatientOption}</span>
+                  <span className="text-xs sm:text-sm font-medium text-slate-500 mt-2 text-center leading-snug max-w-[220px]">
                     {t.newPatientSub}
                   </span>
                 </button>
               </div>
             </div>
 
-            <div className="flex justify-start items-center pt-3 border-t border-black/5 mt-4">
+            <div className="flex justify-start items-center pt-5 border-t border-black/5 mt-6">
               <button
                 type="button"
                 onClick={() => { playTone('tap'); setCurrentScreen('home'); }}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900 transition duration-150 cursor-pointer"
+                className="flex items-center gap-2 px-5 py-3 text-base sm:text-lg font-bold text-slate-600 hover:text-slate-900 transition duration-150 cursor-pointer rounded-2xl bg-white/70 hover:bg-white border border-black/5"
               >
-                {isCurrentRtl ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                {isCurrentRtl ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
                 {t.backBtn}
               </button>
             </div>
@@ -901,37 +967,37 @@ export default function KioskApp({
 
         {/* FLOW 1: PATIENT MET AFSPRAAK - STEP 2 (Personal details input) */}
         {currentScreen === 'f1_details' && (
-          <div className="w-full max-w-2xl animate-fade-in flex flex-col h-full justify-between">
+          <div className="w-full max-w-3xl animate-fade-in flex flex-col h-full justify-between">
             <div>
-              <div className="flex justify-between items-start mb-3">
+              <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h2 className="text-xl font-sans font-bold text-slate-900 tracking-tight">{t.personalDetailsTitle}</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <h2 className="text-2xl sm:text-3xl font-sans font-extrabold text-slate-900 tracking-tight">{t.personalDetailsTitle}</h2>
+                  <p className="text-sm sm:text-base text-slate-500 mt-1">
                     {patientType === 'known' ? t.knownPatientNotice : t.personalDetailsSub}
                   </p>
                 </div>
-                <span className="text-xs font-semibold bg-blue-500/10 text-[#0071E3] border border-blue-500/20 px-3 py-1 rounded-full font-mono">
+                <span className="text-sm font-bold bg-blue-500/10 text-[#0071E3] border border-blue-500/25 px-4 py-1.5 rounded-full font-mono">
                   Stap 2 van 3
                 </span>
               </div>
 
               {formError && (
-                <div className="mb-2.5 p-3 rounded-xl bg-red-500/10 text-red-700 text-xs flex items-center gap-2 border border-red-500/20 backdrop-blur-xs">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+                <div className="mb-4 p-4 rounded-2xl bg-red-500/10 text-red-700 text-sm sm:text-base font-semibold flex items-center gap-3 border border-red-500/20 backdrop-blur-xs">
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-red-500" />
                   <span>{formError}</span>
                 </div>
               )}
 
               {patientType === 'known' && (
-                <div className="mb-3 p-3 rounded-xl bg-emerald-500/10 text-emerald-800 text-xs flex items-center gap-2 border border-emerald-500/20 backdrop-blur-xs">
-                  <UserCheck className="h-4 w-4 shrink-0 text-emerald-600" />
-                  <span className="font-medium">{t.knownPatientNotice}</span>
+                <div className="mb-4 p-4 rounded-2xl bg-emerald-500/10 text-emerald-800 text-sm sm:text-base flex items-center gap-3 border border-emerald-500/20 backdrop-blur-xs">
+                  <UserCheck className="h-6 w-6 shrink-0 text-emerald-600" />
+                  <span className="font-semibold">{t.knownPatientNotice}</span>
                 </div>
               )}
 
-              <form onSubmit={submitF1Details} className="grid grid-cols-2 gap-3 apple-glass-card p-4 rounded-2xl border border-white/80">
+              <form onSubmit={submitF1Details} className="grid grid-cols-2 gap-4 apple-glass-card p-6 sm:p-7 rounded-3xl border border-white/80 shadow-md">
                 <div className="flex flex-col">
-                  <label className="text-xs font-semibold text-slate-700 mb-1">{t.firstNameLabel} *</label>
+                  <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">{t.firstNameLabel} *</label>
                   <input
                     id="input-kiosk-f1-firstname"
                     type="text"
@@ -940,13 +1006,13 @@ export default function KioskApp({
                     onFocus={() => handleInputFocus('firstName', 'Voornaam', false)}
                     onClick={() => handleInputFocus('firstName', 'Voornaam', false)}
                     placeholder="bijv. Sophie"
-                    className="p-2.5 text-sm rounded-xl apple-glass-input scroll-mt-16"
+                    className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input scroll-mt-16 font-medium shadow-2xs"
                     required
                   />
                 </div>
 
                 <div className="flex flex-col">
-                  <label className="text-xs font-semibold text-slate-700 mb-1">{t.lastNameLabel} *</label>
+                  <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">{t.lastNameLabel} *</label>
                   <input
                     id="input-kiosk-f1-lastname"
                     type="text"
@@ -955,13 +1021,13 @@ export default function KioskApp({
                     onFocus={() => handleInputFocus('lastName', 'Achternaam', false)}
                     onClick={() => handleInputFocus('lastName', 'Achternaam', false)}
                     placeholder="bijv. Peeters"
-                    className="p-2.5 text-sm rounded-xl apple-glass-input scroll-mt-16"
+                    className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input scroll-mt-16 font-medium shadow-2xs"
                     required
                   />
                 </div>
 
                 <div className={`flex flex-col ${patientType === 'known' ? 'col-span-2 sm:col-span-1' : ''}`}>
-                  <label className="text-xs font-semibold text-slate-700 mb-1">{t.birthDateLabel} *</label>
+                  <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">{t.birthDateLabel} *</label>
                   <input
                     id="input-kiosk-f1-birthdate"
                     type="text"
@@ -971,7 +1037,7 @@ export default function KioskApp({
                     onClick={() => handleInputFocus('birthDate', 'Geboortedatum (DD/MM/JJJJ)', true)}
                     maxLength={10}
                     placeholder="DD/MM/JJJJ (bijv. 14/08/1985)"
-                    className="p-2.5 text-sm rounded-xl apple-glass-input scroll-mt-16"
+                    className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input scroll-mt-16 font-medium shadow-2xs"
                     required
                   />
                 </div>
@@ -980,14 +1046,14 @@ export default function KioskApp({
                 {patientType !== 'known' && (
                   <>
                     {/* Keuzeknoppen voor Identificatie / Nationaliteit */}
-                    <div className="col-span-2 flex flex-col gap-2.5">
+                    <div className="col-span-2 flex flex-col gap-3 my-1">
                       {/* Geen Belgische Nationaliteit Toggle */}
                       <div 
                         onClick={() => {
                           setHasForeignNationality(!hasForeignNationality);
                           setFormError('');
                         }}
-                        className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition select-none ${
+                        className={`p-3.5 sm:p-4 rounded-2xl border flex items-start gap-3 cursor-pointer transition select-none ${
                           hasForeignNationality 
                             ? 'bg-blue-500/10 border-[#0071E3]/50 shadow-xs' 
                             : 'bg-blue-500/5 border-blue-500/20 hover:bg-blue-500/10'
@@ -1002,11 +1068,11 @@ export default function KioskApp({
                             setFormError('');
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer shrink-0"
+                          className="mt-1 h-5 w-5 rounded border-slate-300 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer shrink-0"
                         />
-                        <label htmlFor="checkbox-kiosk-f1-non-belgian" className="text-xs text-slate-700 cursor-pointer select-none">
-                          <span className="font-semibold text-slate-900 block">{t.nonBelgianNationalityCheckbox}</span>
-                          <span className="text-slate-500 block text-[11px] mt-0.5">{t.nonBelgianNationalityHint}</span>
+                        <label htmlFor="checkbox-kiosk-f1-non-belgian" className="text-sm sm:text-base text-slate-700 cursor-pointer select-none">
+                          <span className="font-bold text-slate-900 block">{t.nonBelgianNationalityCheckbox}</span>
+                          <span className="text-slate-500 block text-xs sm:text-sm mt-0.5">{t.nonBelgianNationalityHint}</span>
                         </label>
                       </div>
 
@@ -1016,7 +1082,7 @@ export default function KioskApp({
                           setUnknownIdentification(!unknownIdentification);
                           setFormError('');
                         }}
-                        className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition select-none ${
+                        className={`p-3.5 sm:p-4 rounded-2xl border flex items-start gap-3 cursor-pointer transition select-none ${
                           unknownIdentification 
                             ? 'bg-blue-500/10 border-[#0071E3]/50 shadow-xs' 
                             : 'bg-blue-500/5 border-blue-500/20 hover:bg-blue-500/10'
@@ -1031,17 +1097,17 @@ export default function KioskApp({
                             setFormError('');
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer shrink-0"
+                          className="mt-1 h-5 w-5 rounded border-slate-300 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer shrink-0"
                         />
-                        <label htmlFor="checkbox-kiosk-f1-unknown-id" className="text-xs text-slate-700 cursor-pointer select-none">
-                          <span className="font-semibold text-slate-900 block">{t.unknownIdCheckbox}</span>
-                          <span className="text-slate-500 block text-[11px] mt-0.5">{t.unknownIdHint}</span>
+                        <label htmlFor="checkbox-kiosk-f1-unknown-id" className="text-sm sm:text-base text-slate-700 cursor-pointer select-none">
+                          <span className="font-bold text-slate-900 block">{t.unknownIdCheckbox}</span>
+                          <span className="text-slate-500 block text-xs sm:text-sm mt-0.5">{t.unknownIdHint}</span>
                         </label>
                       </div>
                     </div>
 
                     <div className="flex flex-col">
-                      <label className="text-xs font-semibold text-slate-700 mb-1">
+                      <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                         {t.registryNumLabel} {!(hasForeignNationality || unknownIdentification) && '*'}
                       </label>
                       <input
@@ -1053,16 +1119,16 @@ export default function KioskApp({
                         onClick={() => handleInputFocus('nationalRegNum', 'Rijksregisternummer (YY.MM.DD-XXX.CC)', true)}
                         maxLength={15}
                         placeholder={(hasForeignNationality || unknownIdentification) ? "Optioneel (bv. 85.08.14-123.45)" : "bijv. 85.08.14-123.45"}
-                        className="p-2.5 text-sm rounded-xl apple-glass-input scroll-mt-16"
+                        className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input scroll-mt-16 font-medium shadow-2xs"
                         required={!(hasForeignNationality || unknownIdentification)}
                       />
                     </div>
 
                     <div className="flex flex-col">
-                      <label className="text-xs font-semibold text-slate-700 mb-1">
+                      <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                         {t.idCardLabel} {!(hasForeignNationality || unknownIdentification) && '*'}
                         {(hasForeignNationality || unknownIdentification) && (
-                          <span className="text-[9px] text-slate-400 font-normal ml-1">(Optioneel)</span>
+                          <span className="text-xs text-slate-400 font-normal ml-1">(Optioneel)</span>
                         )}
                       </label>
                       <input
@@ -1074,7 +1140,7 @@ export default function KioskApp({
                         onChange={(e) => handleIdCardNumChange(e.target.value)}
                         onFocus={() => handleInputFocus('idCardNum', 'Identiteitskaartnummer', true)}
                         onClick={() => handleInputFocus('idCardNum', 'Identiteitskaartnummer', true)}
-                        className="p-2.5 text-sm rounded-xl apple-glass-input scroll-mt-16"
+                        className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input scroll-mt-16 font-medium shadow-2xs"
                         required={!(hasForeignNationality || unknownIdentification)}
                       />
                     </div>
@@ -1083,23 +1149,23 @@ export default function KioskApp({
               </form>
             </div>
 
-            <div className="flex justify-between items-center pt-3 border-t border-black/5 mt-3">
+            <div className="flex justify-between items-center pt-5 border-t border-black/5 mt-5">
               <button
                 type="button"
                 onClick={() => { playTone('tap'); setCurrentScreen('f1_patient_type'); }}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900 transition duration-150 cursor-pointer"
+                className="flex items-center gap-2 px-5 py-3 text-base sm:text-lg font-bold text-slate-600 hover:text-slate-900 transition duration-150 cursor-pointer rounded-2xl bg-white/70 hover:bg-white border border-black/5"
               >
-                {isCurrentRtl ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                {isCurrentRtl ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
                 {t.backBtn}
               </button>
 
               <button
                 type="button"
                 onClick={submitF1Details}
-                className="flex items-center gap-1.5 bg-[#0071E3] hover:bg-[#0077ED] active:scale-95 text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-md shadow-blue-500/25 transition duration-150 cursor-pointer"
+                className="flex items-center gap-2 bg-[#0071E3] hover:bg-[#0077ED] active:scale-95 text-white px-8 py-3.5 sm:py-4 rounded-2xl text-base sm:text-lg font-extrabold shadow-md shadow-blue-500/25 transition duration-150 cursor-pointer"
               >
                 {t.nextBtn}
-                {isCurrentRtl ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                {isCurrentRtl ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
               </button>
             </div>
           </div>
@@ -1107,29 +1173,29 @@ export default function KioskApp({
 
         {/* FLOW 1: STEP 3 (Select Time & Practitioner / De verpleegkundige) */}
         {currentScreen === 'f1_appointment' && (
-          <div className="w-full max-w-xl animate-fade-in flex flex-col h-full justify-between">
+          <div className="w-full max-w-2xl animate-fade-in flex flex-col h-full justify-between">
             <div>
-              <div className="flex justify-between items-start mb-3">
+              <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h2 className="text-xl font-sans font-bold text-slate-900 tracking-tight">{t.apptDetailsTitle}</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">{t.apptDetailsSub}</p>
+                  <h2 className="text-2xl sm:text-3xl font-sans font-extrabold text-slate-900 tracking-tight">{t.apptDetailsTitle}</h2>
+                  <p className="text-sm sm:text-base text-slate-500 mt-1">{t.apptDetailsSub}</p>
                 </div>
-                <span className="text-xs font-semibold bg-blue-500/10 text-[#0071E3] border border-blue-500/20 px-3 py-1 rounded-full font-mono">
+                <span className="text-sm font-bold bg-blue-500/10 text-[#0071E3] border border-blue-500/25 px-4 py-1.5 rounded-full font-mono">
                   Stap 3 van 3
                 </span>
               </div>
 
               {formError && (
-                <div className="mb-3 p-3 rounded-xl bg-red-500/10 text-red-700 text-xs flex items-center gap-2 border border-red-500/20 backdrop-blur-xs">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+                <div className="mb-4 p-4 rounded-2xl bg-red-500/10 text-red-700 text-sm sm:text-base font-semibold flex items-center gap-3 border border-red-500/20 backdrop-blur-xs">
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-red-500" />
                   <span>{formError}</span>
                 </div>
               )}
 
-              <form onSubmit={handleConfirmF1Appointment} className="space-y-4 apple-glass-card p-5 rounded-2xl border border-white/80">
+              <form onSubmit={handleConfirmF1Appointment} className="space-y-5 apple-glass-card p-6 sm:p-7 rounded-3xl border border-white/80 shadow-md">
                 <div className="flex flex-col">
-                  <label className="text-xs font-semibold text-slate-700 mb-1.5">{t.apptTimeLabel}</label>
-                  <div className="flex gap-2.5">
+                  <label className="text-sm sm:text-base font-bold text-slate-800 mb-2">{t.apptTimeLabel}</label>
+                  <div className="flex gap-3">
                     <select
                       id="input-kiosk-f1-time-hr"
                       value={appointmentTime ? appointmentTime.split(':')[0] : ''}
@@ -1137,7 +1203,7 @@ export default function KioskApp({
                         const min = (appointmentTime && appointmentTime.split(':')[1]) ? appointmentTime.split(':')[1] : '00';
                         setAppointmentTime(`${e.target.value}:${min}`);
                       }}
-                      className="p-3 w-full text-base rounded-xl apple-glass-input font-medium"
+                      className="p-3.5 sm:p-4 w-full text-lg sm:text-xl rounded-2xl apple-glass-input font-bold"
                       required
                     >
                       <option value="" disabled>Uur</option>
@@ -1146,7 +1212,7 @@ export default function KioskApp({
                         return <option key={`hr-${v}`} value={v}>{v}u</option>;
                       })}
                     </select>
-                    <span className="text-xl font-bold self-center text-slate-400">:</span>
+                    <span className="text-2xl font-bold self-center text-slate-400">:</span>
                     <select
                       id="input-kiosk-f1-time-min"
                       value={appointmentTime ? appointmentTime.split(':')[1] : ''}
@@ -1154,7 +1220,7 @@ export default function KioskApp({
                         const hr = (appointmentTime && appointmentTime.split(':')[0]) ? appointmentTime.split(':')[0] : '08';
                         setAppointmentTime(`${hr}:${e.target.value}`);
                       }}
-                      className="p-3 w-full text-base rounded-xl apple-glass-input font-medium"
+                      className="p-3.5 sm:p-4 w-full text-lg sm:text-xl rounded-2xl apple-glass-input font-bold"
                       required
                     >
                       <option value="" disabled>Min</option>
@@ -1167,21 +1233,25 @@ export default function KioskApp({
                 </div>
 
                 <div className="flex flex-col">
-                  <label className="text-xs font-semibold text-slate-700 mb-1.5">{t.apptDoctorLabel}</label>
+                  <label className="text-sm sm:text-base font-bold text-slate-800 mb-2">{t.apptDoctorLabel}</label>
                   <select
                     id="select-kiosk-f1-doctor"
                     value={selectedDoctorId}
                     onChange={(e) => setSelectedDoctorId(e.target.value)}
-                    className="p-3 w-full text-sm rounded-xl apple-glass-input font-medium"
+                    className="p-3.5 sm:p-4 w-full text-base sm:text-lg rounded-2xl apple-glass-input font-semibold"
                     required
                   >
                     <option value="">{t.selectDoctorPlaceholder}</option>
                     {availableDoctors && availableDoctors.map((dr) => {
                       const isNurse = (dr.id === 'nurse-verpleegkundige') || dr.name.toLowerCase().includes('verpleegkundige');
-                      const roomLabel = isNurse || dr.waitingRoom === 'Gelijkvloers' ? 'Gelijkvloers' : '1ste Verdiep';
+                      const isLaser = (dr.id === 'treatment-laser') || dr.name.toLowerCase() === 'laser';
+                      const roomLabel = isNurse || isLaser || dr.waitingRoom === 'Gelijkvloers' ? 'Gelijkvloers' : '1ste Verdiep';
+                      const labelText = isLaser 
+                        ? `Laser (${roomLabel})` 
+                        : `${dr.name} - ${dr.specialty} (${roomLabel})`;
                       return (
                         <option key={dr.id} value={dr.id}>
-                          {dr.name} - {dr.specialty} ({roomLabel})
+                          {labelText}
                         </option>
                       );
                     })}
@@ -1190,22 +1260,22 @@ export default function KioskApp({
               </form>
             </div>
 
-            <div className="flex justify-between items-center pt-3 border-t border-black/5 mt-4">
+            <div className="flex justify-between items-center pt-5 border-t border-black/5 mt-5">
               <button
                 type="button"
                 onClick={() => { playTone('tap'); setCurrentScreen('f1_details'); }}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900 transition duration-150 cursor-pointer"
+                className="flex items-center gap-2 px-5 py-3 text-base sm:text-lg font-bold text-slate-600 hover:text-slate-900 transition duration-150 cursor-pointer rounded-2xl bg-white/70 hover:bg-white border border-black/5"
               >
-                {isCurrentRtl ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                {isCurrentRtl ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
                 {t.backBtn}
               </button>
 
               <button
                 type="button"
                 onClick={handleConfirmF1Appointment}
-                className="flex items-center gap-2 bg-[#0071E3] hover:bg-[#0077ED] active:scale-95 text-white px-7 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-blue-500/30 transition duration-150 cursor-pointer"
+                className="flex items-center gap-2.5 bg-[#0071E3] hover:bg-[#0077ED] active:scale-95 text-white px-8 py-3.5 sm:py-4 rounded-2xl text-base sm:text-lg font-extrabold shadow-md shadow-blue-500/30 transition duration-150 cursor-pointer"
               >
-                <CheckCircle className="h-4 w-4 text-white" />
+                <CheckCircle className="h-5 w-5 text-white" />
                 {t.confirmBtn}
               </button>
             </div>
@@ -1214,40 +1284,40 @@ export default function KioskApp({
 
         {/* FLOW 1: SUCCESS RESULT PAGE (Auto countdown) */}
         {currentScreen === 'f1_success' && (
-          <div className="w-full max-w-2xl text-center animate-bounce-in py-2">
-            <div className="h-16 w-16 bg-emerald-500/15 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-emerald-500/30 shadow-lg shadow-emerald-500/20">
-              <CheckCircle className="h-9 w-9 text-emerald-600" />
+          <div className="w-full max-w-2xl text-center animate-bounce-in py-6">
+            <div className="h-20 w-20 sm:h-24 sm:w-24 bg-emerald-500/15 rounded-3xl flex items-center justify-center mx-auto mb-5 border border-emerald-500/30 shadow-xl shadow-emerald-500/20">
+              <CheckCircle className="h-12 w-12 sm:h-14 sm:w-14 text-emerald-600" />
             </div>
 
-            <h2 className="text-2xl font-sans font-bold text-slate-900 mb-1.5 tracking-tight">
+            <h2 className="text-3xl sm:text-4xl font-sans font-extrabold text-slate-900 mb-3 tracking-tight">
               {t.checkinSuccessTitle}
             </h2>
             
-            <p className="text-slate-500 text-sm mb-5">
-              Mevr/Dhr. <strong>{lastName}</strong>, {t.teamsNotificationSent}
+            <p className="text-slate-600 text-base sm:text-lg mb-6">
+              Mevr/Dhr. <strong className="text-slate-900">{lastName}</strong>, {t.teamsNotificationSent}
             </p>
 
-            <div className="p-5 apple-glass-card rounded-2xl inline-block max-w-[480px] border border-white/90 shadow-lg mb-5">
-              <span className="block text-xs uppercase font-mono tracking-wider font-semibold text-slate-400 mb-1">
+            <div className="p-6 sm:p-8 apple-glass-card rounded-3xl inline-block max-w-[540px] border border-white/90 shadow-xl mb-6">
+              <span className="block text-sm uppercase font-mono tracking-wider font-bold text-slate-400 mb-2">
                 {t.directionPrefix}
               </span>
-              <span className="text-xl font-sans font-bold text-slate-900">
+              <span className="text-2xl sm:text-3xl font-sans font-extrabold text-[#0071E3]">
                 {resolvedRoom === 'Gelijkvloers' ? t.waitingRoomGround : t.waitingRoomFirst}
               </span>
             </div>
 
             {isPatientLate && (
-              <div className="mx-auto max-w-md p-3.5 rounded-xl bg-amber-500/10 text-amber-800 text-xs flex items-center gap-2.5 border border-amber-500/20 mb-4 backdrop-blur-xs">
-                <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
+              <div className="mx-auto max-w-md p-4 rounded-2xl bg-amber-500/10 text-amber-800 text-sm sm:text-base flex items-center gap-3 border border-amber-500/20 mb-6 backdrop-blur-xs">
+                <AlertTriangle className="h-6 w-6 shrink-0 text-amber-600" />
                 <span className="text-start font-medium">{t.lateWarningText}</span>
               </div>
             )}
 
-            <div className="text-xs text-slate-400">
+            <div className="text-sm sm:text-base text-slate-500">
               <p>{t.redirectTimerText.replace('{seconds}', countdown.toString())}</p>
               <button 
                 onClick={handleResetToHome}
-                className="mt-2.5 underline hover:text-slate-900 cursor-pointer text-[11px] font-semibold"
+                className="mt-3 underline hover:text-slate-900 cursor-pointer text-sm font-bold text-[#0071E3]"
               >
                 {t.returnToStartBtn}
               </button>
@@ -1258,43 +1328,45 @@ export default function KioskApp({
         {/* FLOW 2: WITHOUT APPOINTMENT - OPTION CHOICES */}
         {currentScreen === 'f2_choice' && (
           <div className="w-full max-w-2xl text-center animate-fade-in">
-            <h2 className="text-xl sm:text-2xl font-sans font-bold text-slate-900 mb-6 tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-sans font-extrabold text-slate-900 mb-8 tracking-tight">
               {t.noApptTitle}
             </h2>
 
-            <div className="flex flex-col gap-3.5 max-w-md mx-auto">
+            <div className="flex flex-col gap-4 max-w-lg mx-auto">
               <button
                 id="btn-kiosk-f2-patient"
                 onClick={() => selectF2Choice('patient_info')}
-                className="flex items-center gap-4 p-4.5 rounded-2xl apple-glass-card apple-glass-card-hover apple-glass-card-active text-start cursor-pointer border border-white/80"
+                className="flex items-center gap-5 p-6 sm:p-7 rounded-3xl apple-glass-card apple-glass-card-hover apple-glass-card-active text-start cursor-pointer border border-white/80 shadow-md group"
               >
-                <div className="h-10 w-10 rounded-xl bg-blue-500/10 text-[#0071E3] flex items-center justify-center shrink-0 border border-blue-500/20">
-                  <User className="h-5 w-5" />
+                <div className="h-14 w-14 sm:h-16 sm:w-16 rounded-2xl bg-blue-500/10 text-[#0071E3] flex items-center justify-center shrink-0 border border-blue-500/20 group-hover:scale-105 transition-transform">
+                  <User className="h-7 w-7 sm:h-8 sm:w-8" />
                 </div>
                 <div>
-                  <div className="text-slate-900 font-bold text-sm">{t.optionPatientInfo}</div>
+                  <div className="text-slate-900 font-extrabold text-lg sm:text-xl">{t.optionPatientInfo}</div>
+                  <div className="text-slate-500 text-xs sm:text-sm mt-1">Aanmelden zonder voorafgaande afspraak</div>
                 </div>
               </button>
 
               <button
                 id="btn-kiosk-f2-nonpatient"
                 onClick={() => selectF2Choice('non_patient')}
-                className="flex items-center gap-4 p-4.5 rounded-2xl apple-glass-card apple-glass-card-hover apple-glass-card-active text-start cursor-pointer border border-white/80"
+                className="flex items-center gap-5 p-6 sm:p-7 rounded-3xl apple-glass-card apple-glass-card-hover apple-glass-card-active text-start cursor-pointer border border-white/80 shadow-md group"
               >
-                <div className="h-10 w-10 rounded-xl bg-slate-200/60 text-slate-700 flex items-center justify-center shrink-0 border border-black/5">
-                  <Info className="h-5 w-5" />
+                <div className="h-14 w-14 sm:h-16 sm:w-16 rounded-2xl bg-slate-200/70 text-slate-700 flex items-center justify-center shrink-0 border border-black/5 group-hover:scale-105 transition-transform">
+                  <Info className="h-7 w-7 sm:h-8 sm:w-8" />
                 </div>
                 <div>
-                  <div className="text-slate-900 font-bold text-sm">{t.optionNonPatient}</div>
+                  <div className="text-slate-900 font-extrabold text-lg sm:text-xl">{t.optionNonPatient}</div>
+                  <div className="text-slate-500 text-xs sm:text-sm mt-1">Pakketlevering, vertegenwoordiger of overleg</div>
                 </div>
               </button>
             </div>
 
             <button
               onClick={handleResetToHome}
-              className="mt-6 flex items-center gap-1 mx-auto text-xs font-semibold text-slate-500 hover:text-slate-900 transition cursor-pointer"
+              className="mt-8 inline-flex items-center gap-2 text-sm sm:text-base font-bold text-slate-600 hover:text-slate-900 transition cursor-pointer px-5 py-2.5 rounded-2xl bg-white/70 hover:bg-white border border-black/5"
             >
-              {isCurrentRtl ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+              {isCurrentRtl ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
               {t.backBtn}
             </button>
           </div>
@@ -1302,32 +1374,32 @@ export default function KioskApp({
 
         {/* FLOW 2: PATIENT WITHOUT APPOINTMENT DETAILS FORM */}
         {currentScreen === 'f2_patient_form' && (
-          <div className="w-full max-w-xl animate-fade-in flex flex-col h-full justify-between">
+          <div className="w-full max-w-3xl animate-fade-in flex flex-col h-full justify-between">
             <div>
-              <div className="flex justify-between items-start mb-3">
+              <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h2 className="text-xl font-sans font-bold text-slate-900 tracking-tight">{t.patientHelpTitle}</h2>
-                  <p className="text-xs text-slate-500">{t.patientHelpSub}</p>
+                  <h2 className="text-2xl sm:text-3xl font-sans font-extrabold text-slate-900 tracking-tight">{t.patientHelpTitle}</h2>
+                  <p className="text-sm sm:text-base text-slate-500 mt-1">{t.patientHelpSub}</p>
                 </div>
               </div>
 
               {formError && (
-                <div className="mb-3 p-3 rounded-xl bg-red-500/10 text-red-700 text-xs flex items-center gap-2 border border-red-500/20 col-span-2 backdrop-blur-xs">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+                <div className="mb-4 p-4 rounded-2xl bg-red-500/10 text-red-700 text-sm sm:text-base font-semibold flex items-center gap-3 border border-red-500/20 col-span-2 backdrop-blur-xs">
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-red-500" />
                   <span>{formError}</span>
                 </div>
               )}
 
-              <form onSubmit={submitF2PatientForm} className="grid grid-cols-2 gap-3 apple-glass-card p-5 rounded-2xl border border-white/80">
+              <form onSubmit={submitF2PatientForm} className="grid grid-cols-2 gap-4 apple-glass-card p-6 sm:p-7 rounded-3xl border border-white/80 shadow-md">
                 {/* Keuzeknoppen voor Identificatie / Nationaliteit */}
-                <div className="col-span-2 flex flex-col gap-2.5">
+                <div className="col-span-2 flex flex-col gap-3 my-1">
                   {/* Geen Belgische Nationaliteit Toggle */}
                   <div 
                     onClick={() => {
                       setHasForeignNationality(!hasForeignNationality);
                       setFormError('');
                     }}
-                    className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition select-none ${
+                    className={`p-3.5 sm:p-4 rounded-2xl border flex items-start gap-3 cursor-pointer transition select-none ${
                       hasForeignNationality 
                         ? 'bg-blue-500/10 border-[#0071E3]/50 shadow-xs' 
                         : 'bg-blue-500/5 border-blue-500/20 hover:bg-blue-500/10'
@@ -1342,11 +1414,11 @@ export default function KioskApp({
                         setFormError('');
                       }}
                       onClick={(e) => e.stopPropagation()}
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer shrink-0"
+                      className="mt-1 h-5 w-5 rounded border-slate-300 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer shrink-0"
                     />
-                    <label htmlFor="checkbox-kiosk-f2-non-belgian" className="text-xs text-slate-700 cursor-pointer select-none">
-                      <span className="font-semibold text-slate-900 block">{t.nonBelgianNationalityCheckbox}</span>
-                      <span className="text-[11px] text-slate-500 block mt-0.5">{t.nonBelgianNationalityHint}</span>
+                    <label htmlFor="checkbox-kiosk-f2-non-belgian" className="text-sm sm:text-base text-slate-700 cursor-pointer select-none">
+                      <span className="font-bold text-slate-900 block">{t.nonBelgianNationalityCheckbox}</span>
+                      <span className="text-xs sm:text-sm text-slate-500 block mt-0.5">{t.nonBelgianNationalityHint}</span>
                     </label>
                   </div>
 
@@ -1356,7 +1428,7 @@ export default function KioskApp({
                       setUnknownIdentification(!unknownIdentification);
                       setFormError('');
                     }}
-                    className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition select-none ${
+                    className={`p-3.5 sm:p-4 rounded-2xl border flex items-start gap-3 cursor-pointer transition select-none ${
                       unknownIdentification 
                         ? 'bg-blue-500/10 border-[#0071E3]/50 shadow-xs' 
                         : 'bg-blue-500/5 border-blue-500/20 hover:bg-blue-500/10'
@@ -1371,17 +1443,17 @@ export default function KioskApp({
                         setFormError('');
                       }}
                       onClick={(e) => e.stopPropagation()}
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer shrink-0"
+                      className="mt-1 h-5 w-5 rounded border-slate-300 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer shrink-0"
                     />
-                    <label htmlFor="checkbox-kiosk-f2-unknown-id" className="text-xs text-slate-700 cursor-pointer select-none">
-                      <span className="font-semibold text-slate-900 block">{t.unknownIdCheckbox}</span>
-                      <span className="text-[11px] text-slate-500 block mt-0.5">{t.unknownIdHint}</span>
+                    <label htmlFor="checkbox-kiosk-f2-unknown-id" className="text-sm sm:text-base text-slate-700 cursor-pointer select-none">
+                      <span className="font-bold text-slate-900 block">{t.unknownIdCheckbox}</span>
+                      <span className="text-xs sm:text-sm text-slate-500 block mt-0.5">{t.unknownIdHint}</span>
                     </label>
                   </div>
                 </div>
 
                 <div className="flex flex-col">
-                  <label className="text-xs font-semibold text-slate-700 mb-1">{t.firstNameLabel} *</label>
+                  <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">{t.firstNameLabel} *</label>
                   <input
                     id="input-kiosk-f2-firstname"
                     type="text"
@@ -1390,13 +1462,13 @@ export default function KioskApp({
                     onFocus={() => handleInputFocus('firstName', 'Voornaam', false)}
                     onClick={() => handleInputFocus('firstName', 'Voornaam', false)}
                     placeholder="Voornaam"
-                    className="p-2.5 text-sm rounded-xl apple-glass-input scroll-mt-16"
+                    className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input scroll-mt-16 font-medium shadow-2xs"
                     required
                   />
                 </div>
 
                 <div className="flex flex-col">
-                  <label className="text-xs font-semibold text-slate-700 mb-1">{t.lastNameLabel} *</label>
+                  <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">{t.lastNameLabel} *</label>
                   <input
                     id="input-kiosk-f2-lastname"
                     type="text"
@@ -1405,15 +1477,15 @@ export default function KioskApp({
                     onFocus={() => handleInputFocus('lastName', 'Achternaam', false)}
                     onClick={() => handleInputFocus('lastName', 'Achternaam', false)}
                     placeholder="Achternaam"
-                    className="p-2.5 text-sm rounded-xl apple-glass-input scroll-mt-16"
+                    className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input scroll-mt-16 font-medium shadow-2xs"
                     required
                   />
                 </div>
 
                 <div className="flex flex-col col-span-2">
-                  <label className="text-xs font-semibold text-slate-700 mb-1">
+                  <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                     {t.registryNumLabel} {!(hasForeignNationality || unknownIdentification) && '*'}
-                    <span className="text-[10px] text-slate-400 font-normal ml-1">
+                    <span className="text-xs sm:text-sm text-slate-400 font-normal ml-2">
                       {(hasForeignNationality || unknownIdentification) ? '(Optioneel)' : 'Ter identificatie bij de balie'}
                     </span>
                   </label>
@@ -1426,29 +1498,29 @@ export default function KioskApp({
                     onClick={() => handleInputFocus('nationalRegNum', 'Rijksregisternummer (YY.MM.DD-XXX.CC)', true)}
                     maxLength={15}
                     placeholder={(hasForeignNationality || unknownIdentification) ? "Optioneel (bv. 85.08.14-123.45)" : "Rijksregisternummer (bijv. 85.08.14-123.45)"}
-                    className="p-2.5 text-sm rounded-xl apple-glass-input scroll-mt-16"
+                    className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input scroll-mt-16 font-medium shadow-2xs"
                     required={!(hasForeignNationality || unknownIdentification)}
                   />
                 </div>
               </form>
             </div>
 
-            <div className="flex justify-between items-center pt-3 border-t border-black/5 mt-4">
+            <div className="flex justify-between items-center pt-5 border-t border-black/5 mt-5">
               <button
                 onClick={() => { playTone('tap'); setCurrentScreen('f2_choice'); }}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-900 transition duration-150 cursor-pointer"
+                className="flex items-center gap-2 px-5 py-3 text-base sm:text-lg font-bold text-slate-600 hover:text-slate-900 transition duration-150 cursor-pointer rounded-2xl bg-white/70 hover:bg-white border border-black/5"
               >
-                {isCurrentRtl ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                {isCurrentRtl ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
                 {t.backBtn}
               </button>
 
               <button
                 type="button"
                 onClick={submitF2PatientForm}
-                className="flex items-center gap-1.5 bg-[#0071E3] hover:bg-[#0077ED] active:scale-95 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-blue-500/25 transition duration-150 cursor-pointer"
+                className="flex items-center gap-2 bg-[#0071E3] hover:bg-[#0077ED] active:scale-95 text-white px-8 py-3.5 sm:py-4 rounded-2xl text-base sm:text-lg font-extrabold shadow-md shadow-blue-500/25 transition duration-150 cursor-pointer"
               >
                 {t.nextBtn}
-                {isCurrentRtl ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                {isCurrentRtl ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
               </button>
             </div>
           </div>
@@ -1456,24 +1528,24 @@ export default function KioskApp({
 
         {/* FLOW 2: SUCCESS RESULT PAGE */}
         {currentScreen === 'f2_success' && (
-          <div className="w-full max-w-xl text-center animate-fade-in py-4">
-            <div className="h-16 w-16 bg-blue-500/15 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-500/30 shadow-lg shadow-blue-500/20">
-              <CheckCircle className="h-9 w-9 text-[#0071E3]" />
+          <div className="w-full max-w-2xl text-center animate-fade-in py-6">
+            <div className="h-20 w-20 sm:h-24 sm:w-24 bg-blue-500/15 rounded-3xl flex items-center justify-center mx-auto mb-5 border border-blue-500/30 shadow-xl shadow-blue-500/20">
+              <CheckCircle className="h-12 w-12 sm:h-14 sm:w-14 text-[#0071E3]" />
             </div>
 
-            <h2 className="text-2xl font-sans font-bold text-slate-900 mb-1.5 tracking-tight">
+            <h2 className="text-3xl sm:text-4xl font-sans font-extrabold text-slate-900 mb-3 tracking-tight">
               {t.noApptSuccessTitle}
             </h2>
             
-            <p className="text-slate-600 text-sm leading-relaxed max-w-md mx-auto mb-6">
+            <p className="text-slate-600 text-base sm:text-lg leading-relaxed max-w-lg mx-auto mb-8">
               {firstName === 'Bezoeker/Leverancier' ? t.nonPatientSuccessMsg : t.noApptSuccessMsg}
             </p>
 
-            <div className="text-xs text-slate-400">
+            <div className="text-sm sm:text-base text-slate-500">
               <p>{t.redirectTimerText.replace('{seconds}', countdown.toString())}</p>
               <button 
                 onClick={handleResetToHome}
-                className="mt-2 text-xs underline hover:text-slate-900 cursor-pointer font-medium"
+                className="mt-3 underline hover:text-slate-900 cursor-pointer font-bold text-sm sm:text-base text-[#0071E3]"
               >
                 {t.returnToStartBtn}
               </button>
@@ -1483,30 +1555,30 @@ export default function KioskApp({
 
         {/* HELP REQUEST FORM SCREEN */}
         {currentScreen === 'help_form' && (
-          <div className="w-full max-w-xl animate-fade-in flex flex-col h-full justify-between">
+          <div className="w-full max-w-2xl animate-fade-in flex flex-col h-full justify-between">
             <div>
-              <div className="text-center mb-4">
-                <div className="h-12 w-12 bg-amber-500/15 rounded-2xl flex items-center justify-center mx-auto mb-2.5 border border-amber-500/30 shadow-md shadow-amber-500/15">
-                  <Info className="h-6 w-6 text-amber-600" />
+              <div className="text-center mb-6">
+                <div className="h-16 w-16 bg-amber-500/15 rounded-3xl flex items-center justify-center mx-auto mb-3 border border-amber-500/30 shadow-lg shadow-amber-500/15">
+                  <Info className="h-8 w-8 text-amber-600" />
                 </div>
-                <h2 className="text-xl font-sans font-bold text-slate-900 tracking-tight">
+                <h2 className="text-2xl sm:text-3xl font-sans font-extrabold text-slate-900 tracking-tight">
                   {t.helpScreenTitle}
                 </h2>
-                <p className="text-slate-500 text-xs mt-1">
+                <p className="text-slate-500 text-sm sm:text-base mt-1.5">
                   {t.helpScreenSub}
                 </p>
               </div>
 
               {formError && (
-                <div className="mb-3 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-700 text-xs font-medium flex items-center gap-2 animate-fade-in">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+                <div className="mb-4 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-700 text-sm sm:text-base font-semibold flex items-center gap-3 animate-fade-in">
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-red-500" />
                   <span>{formError}</span>
                 </div>
               )}
 
-              <form onSubmit={submitHelpRequest} className="flex flex-col gap-3 apple-glass-card p-5 rounded-2xl border border-white/80">
+              <form onSubmit={submitHelpRequest} className="flex flex-col gap-4 apple-glass-card p-6 sm:p-7 rounded-3xl border border-white/80 shadow-md">
                 <div className="flex flex-col">
-                  <label htmlFor="input-kiosk-help-name" className="text-xs font-semibold text-slate-700 mb-1">
+                  <label htmlFor="input-kiosk-help-name" className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                     {t.helpNameLabel} *
                   </label>
                   <input
@@ -1520,14 +1592,14 @@ export default function KioskApp({
                     onFocus={() => handleInputFocus('helpName', t.helpNameLabel, false)}
                     onClick={() => handleInputFocus('helpName', t.helpNameLabel, false)}
                     placeholder="bijv. Jan Janssens"
-                    className="p-3 text-sm rounded-xl apple-glass-input scroll-mt-16"
+                    className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input scroll-mt-16 font-medium shadow-2xs"
                     required
                     autoFocus
                   />
                 </div>
 
                 <div className="flex flex-col">
-                  <label htmlFor="input-kiosk-help-desc" className="text-xs font-semibold text-slate-700 mb-1">
+                  <label htmlFor="input-kiosk-help-desc" className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                     {t.helpDescriptionLabel}
                   </label>
                   <textarea
@@ -1538,20 +1610,20 @@ export default function KioskApp({
                     onFocus={() => handleInputFocus('helpDescription', t.helpDescriptionLabel, false)}
                     onClick={() => handleInputFocus('helpDescription', t.helpDescriptionLabel, false)}
                     placeholder={t.helpDescriptionPlaceholder}
-                    className="p-3 text-sm rounded-xl apple-glass-input resize-none scroll-mt-16"
+                    className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input resize-none scroll-mt-16 font-medium shadow-2xs"
                   />
                 </div>
               </form>
             </div>
 
-            <div className="flex justify-between items-center pt-3 border-t border-black/5 mt-4">
+            <div className="flex justify-between items-center pt-5 border-t border-black/5 mt-5">
               <button
                 type="button"
                 id="btn-kiosk-help-cancel"
                 onClick={handleCancelHelp}
-                className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:text-slate-900 transition duration-150 cursor-pointer rounded-xl bg-white/60 hover:bg-white border border-black/5"
+                className="flex items-center gap-2 px-5 py-3 text-base sm:text-lg font-bold text-slate-600 hover:text-slate-900 transition duration-150 cursor-pointer rounded-2xl bg-white/70 hover:bg-white border border-black/5"
               >
-                {isCurrentRtl ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                {isCurrentRtl ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
                 {t.helpCancelBtn}
               </button>
 
@@ -1559,9 +1631,9 @@ export default function KioskApp({
                 type="button"
                 id="btn-kiosk-help-submit"
                 onClick={submitHelpRequest}
-                className="flex items-center gap-1.5 bg-[#0071E3] hover:bg-[#0077ED] active:scale-95 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-blue-500/25 transition duration-150 cursor-pointer"
+                className="flex items-center gap-2 bg-[#0071E3] hover:bg-[#0077ED] active:scale-95 text-white px-8 py-3.5 sm:py-4 rounded-2xl text-base sm:text-lg font-extrabold shadow-md shadow-blue-500/25 transition duration-150 cursor-pointer"
               >
-                <Info className="h-4 w-4" />
+                <Info className="h-5 w-5" />
                 {t.helpSubmitBtn}
               </button>
             </div>
@@ -1570,24 +1642,24 @@ export default function KioskApp({
 
         {/* HELP SUCCESS PAGE */}
         {currentScreen === 'help_success' && (
-          <div className="w-full max-w-xl text-center animate-fade-in py-4">
-            <div className="h-16 w-16 bg-blue-500/15 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-500/30 shadow-lg shadow-blue-500/20">
-              <CheckCircle className="h-9 w-9 text-[#0071E3]" />
+          <div className="w-full max-w-2xl text-center animate-fade-in py-6">
+            <div className="h-20 w-20 sm:h-24 sm:w-24 bg-blue-500/15 rounded-3xl flex items-center justify-center mx-auto mb-5 border border-blue-500/30 shadow-xl shadow-blue-500/20">
+              <CheckCircle className="h-12 w-12 sm:h-14 sm:w-14 text-[#0071E3]" />
             </div>
 
-            <h2 className="text-2xl font-sans font-bold text-slate-900 mb-1.5 tracking-tight">
+            <h2 className="text-3xl sm:text-4xl font-sans font-extrabold text-slate-900 mb-3 tracking-tight">
               {t.helpSuccessTitle}
             </h2>
             
-            <p className="text-slate-600 text-sm leading-relaxed max-w-md mx-auto mb-6">
+            <p className="text-slate-600 text-base sm:text-lg leading-relaxed max-w-lg mx-auto mb-8">
               {t.helpSuccessMsg}
             </p>
 
-            <div className="text-xs text-slate-400">
+            <div className="text-sm sm:text-base text-slate-500">
               <p>{t.redirectTimerText.replace('{seconds}', countdown.toString())}</p>
               <button 
                 onClick={handleResetToHome}
-                className="mt-2 text-xs underline hover:text-slate-900 cursor-pointer font-medium"
+                className="mt-3 underline hover:text-slate-900 cursor-pointer font-bold text-sm sm:text-base text-[#0071E3]"
               >
                 {t.returnToStartBtn}
               </button>
@@ -1598,48 +1670,64 @@ export default function KioskApp({
 
       {/* BOTTOM ACTION BAR - Apple Glass Action Pills */}
       <div 
-        className={`flex items-center gap-2 border-t border-black/5 pt-2.5 mt-2 select-none ${isCurrentRtl ? 'justify-start' : 'justify-end'}`}
+        className={`flex items-center gap-2.5 sm:gap-3 border-t border-black/5 pt-3 mt-3 select-none flex-wrap ${isCurrentRtl ? 'justify-start' : 'justify-end'}`}
         dir={isCurrentRtl ? 'rtl' : 'ltr'}
       >
-        {/* Toggle Virtual Keyboard Button */}
-          <button
-            id="btn-kiosk-toggle-keyboard"
-            type="button"
-            onClick={() => {
-              const nextState = !showVirtualKeyboard;
-              setShowVirtualKeyboard(nextState);
-              if (nextState && !activeInputField) {
-                if (currentScreen === 'f1_details' || currentScreen === 'f2_patient_form') {
-                  setActiveInputField({ id: 'firstName', label: 'Voornaam', isNumeric: false });
-                } else if (currentScreen === 'help_form') {
-                  setActiveInputField({ id: 'helpName', label: t.helpNameLabel, isNumeric: false });
-                }
-              }
-            }}
-            className={`flex items-center gap-1.5 text-xs transition-all duration-200 font-semibold cursor-pointer py-1.5 px-3.5 rounded-full border backdrop-blur-xs ${
-              showVirtualKeyboard 
-                ? 'bg-[#0071E3] text-white border-blue-400/40 shadow-sm' 
-                : 'text-slate-600 hover:text-slate-900 bg-white/70 border-black/5 hover:bg-white shadow-2xs'
-            }`}
-            title="Schermtoetsenbord in- of uitschakelen"
-          >
-            <Keyboard className="h-3.5 w-3.5" />
-            <span>{showVirtualKeyboard ? 'Toetsenbord sluiten' : 'Toetsenbord'}</span>
-          </button>
+        {/* Quick Text Size Toggle in Bottom Bar */}
+        <button
+          id="btn-kiosk-toggle-zoom-bottom"
+          type="button"
+          onClick={handleToggleTextSize}
+          className={`flex items-center gap-2 text-xs sm:text-sm transition-all duration-200 font-bold cursor-pointer py-2 px-4 rounded-full border backdrop-blur-xs ${
+            textSizeMode === 'large'
+              ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+              : 'text-slate-700 hover:text-slate-900 bg-white/80 border-black/10 hover:bg-white shadow-2xs'
+          }`}
+          title="Schakel tussen standaard en grote tablet-weergave"
+        >
+          {textSizeMode === 'large' ? <ZoomOut className="h-4 w-4" /> : <ZoomIn className="h-4 w-4 text-[#0071E3]" />}
+          <span>{textSizeMode === 'large' ? 'Tekst: Extra Groot' : 'Tekst: Standaard'}</span>
+        </button>
 
-          {/* Language selector */}
-          <div className="relative">
-            <button
-              id="btn-kiosk-lang-selector"
-              onClick={() => { playTone('tap'); setLangMenuOpen(!langMenuOpen); }}
-              className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 transition font-semibold cursor-pointer py-1.5 px-3 rounded-full bg-white/70 hover:bg-white border border-black/5 shadow-2xs backdrop-blur-xs"
-            >
-              <Globe2 className="h-3.5 w-3.5 text-[#0071E3]" />
-              <span>taal &bull; language &bull; langue</span>
-              <span className="bg-[#0071E3] text-white rounded-md px-1.5 py-0.5 text-[10px] ml-1 font-bold">
-                {lang}
-              </span>
-            </button>
+        {/* Toggle Virtual Keyboard Button */}
+        <button
+          id="btn-kiosk-toggle-keyboard"
+          type="button"
+          onClick={() => {
+            const nextState = !showVirtualKeyboard;
+            setShowVirtualKeyboard(nextState);
+            if (nextState && !activeInputField) {
+              if (currentScreen === 'f1_details' || currentScreen === 'f2_patient_form') {
+                setActiveInputField({ id: 'firstName', label: 'Voornaam', isNumeric: false });
+              } else if (currentScreen === 'help_form') {
+                setActiveInputField({ id: 'helpName', label: t.helpNameLabel, isNumeric: false });
+              }
+            }
+          }}
+          className={`flex items-center gap-2 text-xs sm:text-sm transition-all duration-200 font-bold cursor-pointer py-2 px-4 rounded-full border backdrop-blur-xs ${
+            showVirtualKeyboard 
+              ? 'bg-[#0071E3] text-white border-blue-400/40 shadow-sm' 
+              : 'text-slate-700 hover:text-slate-900 bg-white/80 border-black/10 hover:bg-white shadow-2xs'
+          }`}
+          title="Schermtoetsenbord in- of uitschakelen"
+        >
+          <Keyboard className="h-4 w-4" />
+          <span>{showVirtualKeyboard ? 'Toetsenbord sluiten' : 'Toetsenbord'}</span>
+        </button>
+
+        {/* Language selector */}
+        <div className="relative">
+          <button
+            id="btn-kiosk-lang-selector"
+            onClick={() => { playTone('tap'); setLangMenuOpen(!langMenuOpen); }}
+            className="flex items-center gap-2 text-xs sm:text-sm text-slate-700 hover:text-slate-900 transition font-bold cursor-pointer py-2 px-4 rounded-full bg-white/80 hover:bg-white border border-black/10 shadow-2xs backdrop-blur-xs"
+          >
+            <Globe2 className="h-4 w-4 text-[#0071E3]" />
+            <span>taal &bull; language</span>
+            <span className="bg-[#0071E3] text-white rounded-md px-2 py-0.5 text-xs ml-1 font-extrabold">
+              {lang}
+            </span>
+          </button>
 
             {langMenuOpen && (
               <>

@@ -82,6 +82,8 @@ export interface LeavePlanningModuleProps {
   systemConfig?: SystemConfig;
 }
 
+const getEnvStorageKey = (key: string) => `${getDetectedEnvironment()}_${key}`;
+
 export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   activeStaffList,
   doctors,
@@ -95,7 +97,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   // Firestore & Local Cache Collections Data
   const [staffList, setStaffList] = useState<StaffMember[]>(() => {
     try {
-      const cached = localStorage.getItem('derm_leave_staff_store');
+      const cached = localStorage.getItem(getEnvStorageKey('derm_leave_staff_store')) || localStorage.getItem('derm_leave_staff_store');
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -110,7 +112,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => {
     try {
-      const cached = localStorage.getItem('derm_leave_requests_store');
+      const cached = localStorage.getItem(getEnvStorageKey('derm_leave_requests_store')) || localStorage.getItem('derm_leave_requests_store');
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
@@ -125,7 +127,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
   const [comments, setComments] = useState<GeneralComment[]>(() => {
     try {
-      const cached = localStorage.getItem('derm_leave_comments_store');
+      const cached = localStorage.getItem(getEnvStorageKey('derm_leave_comments_store')) || localStorage.getItem('derm_leave_comments_store');
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return parsed;
@@ -138,7 +140,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
   const [todos, setTodos] = useState<TodoItem[]>(() => {
     try {
-      const cached = localStorage.getItem('derm_leave_todos_store');
+      const cached = localStorage.getItem(getEnvStorageKey('derm_leave_todos_store')) || localStorage.getItem('derm_leave_todos_store');
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return parsed;
@@ -151,7 +153,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
   const [shiftOverrides, setShiftOverrides] = useState<Record<string, 'dienst' | 'vrij'>>(() => {
     try {
-      const cached = localStorage.getItem('derm_shift_overrides_store');
+      const cached = localStorage.getItem(getEnvStorageKey('derm_shift_overrides_store')) || localStorage.getItem('derm_shift_overrides_store');
       if (cached) return JSON.parse(cached);
     } catch (e) {
       console.warn("Could not read shift overrides store", e);
@@ -217,7 +219,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
           });
           setStaffList(list);
           try {
-            localStorage.setItem('derm_leave_staff_store', JSON.stringify(list));
+            localStorage.setItem(getEnvStorageKey('derm_leave_staff_store'), JSON.stringify(list));
           } catch (e) {}
         }
         setIsLoading(false);
@@ -233,18 +235,39 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       col('leave_requests'),
       snapshot => {
         const list: LeaveRequest[] = [];
+        const seenKeys = new Set<string>();
         snapshot.forEach(d => {
           const data = d.data() as Partial<LeaveRequest>;
           if (isDummyLeaveRequest(data) || !data.staff_id || !data.date) {
             deleteDoc(d.ref).catch(() => {});
           } else {
-            list.push({ ...data, id: d.id } as LeaveRequest);
+            const req = { ...data, id: d.id } as LeaveRequest;
+            const normStaff = (req.staff_id || '').replace(/^staff-/, '').trim().toLowerCase();
+            const key = `${normStaff}_${req.date}_${req.slot}`;
+            if (seenKeys.has(key)) {
+              deleteDoc(d.ref).catch(() => {});
+            } else {
+              seenKeys.add(key);
+              list.push(req);
+            }
           }
         });
-        setLeaveRequests(list);
-        try {
-          localStorage.setItem('derm_leave_requests_store', JSON.stringify(list));
-        } catch (e) {}
+
+        setLeaveRequests(prev => {
+          const firestoreIds = new Set(list.map(r => r.id));
+          const now = Date.now();
+          // Retain recent local optimistic requests (< 2 mins old) not yet reflected in Firestore snapshot
+          const pendingRecent = prev.filter(r => {
+            if (firestoreIds.has(r.id)) return false;
+            const created = r.created_at ? new Date(r.created_at).getTime() : 0;
+            return now - created < 120000;
+          });
+          const merged = [...list, ...pendingRecent];
+          try {
+            localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(merged));
+          } catch (e) {}
+          return merged;
+        });
       },
       err => {
         console.warn('Firestore leave_requests listener (using local cache):', err);
@@ -263,7 +286,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
           });
           setComments(list);
           try {
-            localStorage.setItem('derm_leave_comments_store', JSON.stringify(list));
+            localStorage.setItem(getEnvStorageKey('derm_leave_comments_store'), JSON.stringify(list));
           } catch (e) {}
         }
       },
@@ -284,7 +307,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
           });
           setTodos(list);
           try {
-            localStorage.setItem('derm_leave_todos_store', JSON.stringify(list));
+            localStorage.setItem(getEnvStorageKey('derm_leave_todos_store'), JSON.stringify(list));
           } catch (e) {}
         }
       },
@@ -311,7 +334,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     if (newRequests.length > 0) {
       setLeaveRequests(updatedRequests);
       try {
-        localStorage.setItem('derm_leave_requests_store', JSON.stringify(updatedRequests));
+        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(updatedRequests));
       } catch (e) {}
 
       // Resilient background write to Firestore for new holiday requests
@@ -351,7 +374,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     setComments(prev => {
       const next = [newComment, ...prev];
       try {
-        localStorage.setItem('derm_leave_comments_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_comments_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -365,7 +388,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     setComments(prev => {
       const next = prev.filter(c => c.id !== commentId);
       try {
-        localStorage.setItem('derm_leave_comments_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_comments_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -386,7 +409,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     setTodos(prev => {
       const next = [newTodo, ...prev];
       try {
-        localStorage.setItem('derm_leave_todos_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_todos_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -399,7 +422,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     setTodos(prev => {
       const next = prev.map(t => t.id === todoId ? { ...t, is_completed: !currentCompleted, archived: !currentCompleted } : t);
       try {
-        localStorage.setItem('derm_leave_todos_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_todos_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -414,7 +437,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     setTodos(prev => {
       const next = prev.filter(t => t.id !== todoId);
       try {
-        localStorage.setItem('derm_leave_todos_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_todos_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -427,7 +450,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     setTodos(prev => {
       const next = prev.map(t => t.id === todoId ? { ...t, is_completed: false, archived: false } : t);
       try {
-        localStorage.setItem('derm_leave_todos_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_todos_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -444,7 +467,8 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     staffName: string,
     date: string,
     slot: LeaveSlot,
-    type: LeaveType
+    type: LeaveType,
+    note?: string
   ) => {
     // 1. Clear any conflicting custom shift override for this slot
     if (slot === 'HELE_DAG') {
@@ -455,7 +479,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         delete next[k1];
         delete next[k2];
         try {
-          localStorage.setItem('derm_shift_overrides_store', JSON.stringify(next));
+          localStorage.setItem(getEnvStorageKey('derm_shift_overrides_store'), JSON.stringify(next));
         } catch (e) {}
         return next;
       });
@@ -465,7 +489,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         const next = { ...prev };
         delete next[overrideKey];
         try {
-          localStorage.setItem('derm_shift_overrides_store', JSON.stringify(next));
+          localStorage.setItem(getEnvStorageKey('derm_shift_overrides_store'), JSON.stringify(next));
         } catch (e) {}
         return next;
       });
@@ -474,11 +498,19 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     const newTargetId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     let docToWrite: LeaveRequest | null = null;
     let splitDocToWrite: LeaveRequest | null = null;
+    const toDeleteFromDb: string[] = [];
+
+    const isSameStaff = (r: LeaveRequest) => {
+      if (r.staff_id === staffId) return true;
+      if (r.staff_id && staffId && r.staff_id.replace(/^staff-/, '') === staffId.replace(/^staff-/, '')) return true;
+      if (r.staff_name && staffName && r.staff_name.trim().toLowerCase() === staffName.trim().toLowerCase()) return true;
+      return false;
+    };
 
     // 2. ZERO-LATENCY OPTIMISTIC UPDATE
     setLeaveRequests(prev => {
-      const existingSameSlot = prev.find(r => r.staff_id === staffId && r.date === date && r.slot === slot);
-      const existingFullDay = prev.find(r => r.staff_id === staffId && r.date === date && r.slot === 'HELE_DAG');
+      const existingSameSlot = prev.find(r => isSameStaff(r) && r.date === date && r.slot === slot);
+      const existingFullDay = prev.find(r => isSameStaff(r) && r.date === date && r.slot === 'HELE_DAG');
 
       const targetId = existingSameSlot?.id || (slot === 'HELE_DAG' && existingFullDay ? existingFullDay.id : newTargetId);
       const updatedRequest: LeaveRequest = {
@@ -490,6 +522,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         units: slot === 'HELE_DAG' ? 1.0 : 0.5,
         type: type,
         status: 'aangevraagd',
+        ...(note?.trim() ? { note: note.trim() } : {}),
         created_at: existingSameSlot?.created_at || existingFullDay?.created_at || new Date().toISOString()
       };
       docToWrite = updatedRequest;
@@ -500,7 +533,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       if (slot !== 'HELE_DAG' && existingFullDay) {
         const otherSlot: 'VM' | 'NM' = slot === 'VM' ? 'NM' : 'VM';
         const splitReq: LeaveRequest = {
-          id: `req-${Date.now()}-split`,
+          id: `req-${Date.now()}-split-${Math.random().toString(36).substring(2, 7)}`,
           staff_id: staffId,
           staff_name: staffName,
           date: date,
@@ -512,14 +545,26 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         };
         additionalRequests.push(splitReq);
         splitDocToWrite = splitReq;
+        if (existingFullDay.id !== targetId) {
+          toDeleteFromDb.push(existingFullDay.id);
+        }
       }
 
       // Filter out replaced requests
       const next = prev.filter(r => {
-        if (r.staff_id !== staffId || r.date !== date) return true;
-        if (slot === 'HELE_DAG') return false; // HELE_DAG replaces everything on that date
-        if (r.slot === 'HELE_DAG') return false; // Replaced by the new request + split request
-        if (r.slot === slot) return false;
+        if (!isSameStaff(r) || r.date !== date) return true;
+        if (slot === 'HELE_DAG') {
+          if (r.id !== targetId) toDeleteFromDb.push(r.id);
+          return false; // HELE_DAG replaces everything on that date
+        }
+        if (r.slot === 'HELE_DAG') {
+          if (r.id !== targetId) toDeleteFromDb.push(r.id);
+          return false; // Replaced by the new request + split request
+        }
+        if (r.slot === slot) {
+          if (r.id !== targetId) toDeleteFromDb.push(r.id);
+          return false;
+        }
         return true;
       });
 
@@ -529,12 +574,15 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       }
 
       try {
-        localStorage.setItem('derm_leave_requests_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
 
-    // 3. PERSIST TO FIRESTORE IN BACKGROUND (NON-BLOCKING)
+    // 3. PERSIST TO FIRESTORE
+    toDeleteFromDb.forEach(oldId => {
+      deleteDoc(docRef('leave_requests', oldId)).catch(() => {});
+    });
     if (docToWrite) {
       setDoc(docRef('leave_requests', (docToWrite as LeaveRequest).id), sanitizeForFirestore(docToWrite))
         .catch(err => console.warn('Firestore leave request write failed, saved locally:', err));
@@ -546,11 +594,12 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   };
 
   const handleDirectCancelLeave = async (requestId: string) => {
+    if (!requestId) return;
     // 1. ZERO-LATENCY OPTIMISTIC REMOVAL
     setLeaveRequests(prev => {
       const next = prev.filter(r => r.id !== requestId);
       try {
-        localStorage.setItem('derm_leave_requests_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -561,6 +610,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   };
 
   const handleDirectSwitchLeaveType = async (requestId: string, newType: LeaveType) => {
+    if (!requestId) return;
     // 1. ZERO-LATENCY OPTIMISTIC UPDATE
     setLeaveRequests(prev => {
       const next = prev.map(r => {
@@ -574,7 +624,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         return r;
       });
       try {
-        localStorage.setItem('derm_leave_requests_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -636,7 +686,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       }
 
       try {
-        localStorage.setItem('derm_leave_requests_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -645,7 +695,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     setShiftOverrides(prev => {
       const next = { ...prev, [overrideKey]: status };
       try {
-        localStorage.setItem('derm_shift_overrides_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_shift_overrides_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -670,6 +720,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
   // --- Leave Requests (Approvals & Status) ---
   const handleUpdateLeaveStatus = async (requestId: string, newStatus: LeaveStatus, note?: string) => {
+    if (!requestId || typeof requestId !== 'string') return;
     let fullUpdated: LeaveRequest | undefined;
 
     setLeaveRequests(prev => {
@@ -685,7 +736,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         return r;
       });
       try {
-        localStorage.setItem('derm_leave_requests_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -718,7 +769,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         return r;
       });
       try {
-        localStorage.setItem('derm_leave_requests_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -735,10 +786,11 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   };
 
   const handleDeleteLeaveRequest = async (requestId: string) => {
+    if (!requestId) return;
     setLeaveRequests(prev => {
       const next = prev.filter(r => r.id !== requestId);
       try {
-        localStorage.setItem('derm_leave_requests_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -763,7 +815,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         return r;
       });
       try {
-        localStorage.setItem('derm_leave_requests_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -787,7 +839,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     setStaffList(prev => {
       const next = prev.map(s => (s.id === staffId ? { ...s, schedule: newSchedule } : s));
       try {
-        localStorage.setItem('derm_leave_staff_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_staff_store'), JSON.stringify(next));
       } catch (e) {
         console.warn('Could not save updated staff to localStorage', e);
       }
@@ -806,7 +858,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       });
       if (changed) {
         try {
-          localStorage.setItem('derm_shift_overrides_store', JSON.stringify(next));
+          localStorage.setItem(getEnvStorageKey('derm_shift_overrides_store'), JSON.stringify(next));
         } catch (e) {
           console.warn('Could not save cleared shift overrides', e);
         }
@@ -834,7 +886,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     setStaffList(prev => {
       const next = [...prev, newStaff];
       try {
-        localStorage.setItem('derm_leave_staff_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_staff_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -861,7 +913,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     setStaffList(prev => {
       const next = prev.map(s => (s.id === staffId ? { ...s, ...updates } : s));
       try {
-        localStorage.setItem('derm_leave_staff_store', JSON.stringify(next));
+        localStorage.setItem(getEnvStorageKey('derm_leave_staff_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
@@ -977,7 +1029,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     // 1. Optimistic update
     setLeaveRequests(restored);
     try {
-      localStorage.setItem('derm_leave_requests_store', JSON.stringify(restored));
+      localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(restored));
     } catch (e) {}
 
     // 2. Overwrite in Firestore
