@@ -16,6 +16,7 @@ import {
 import {
   DAYS_OF_WEEK,
   getISOWeekDetails,
+  formatBelgianDate,
   isLeaveRequestForStaff,
   findMatchingStaff,
   getBelgianHoliday
@@ -614,7 +615,8 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
         if (searchTerm.trim()) {
           const term = searchTerm.toLowerCase();
           const nameMatch = (r.staff_name || staff?.name || '').toLowerCase().includes(term);
-          const dateMatch = r.date.includes(term);
+          const belgianDate = formatBelgianDate(r.date);
+          const dateMatch = r.date.includes(term) || belgianDate.includes(term);
           return nameMatch || dateMatch;
         }
         return true;
@@ -1535,7 +1537,7 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                           <span className="text-[10px] text-slate-500 capitalize">{staff?.role || 'Personeel'}</span>
                         </td>
                         <td className="p-3">
-                          <div className="font-semibold text-slate-800">{r.date}</div>
+                          <div className="font-semibold text-slate-800">{formatBelgianDate(r.date)}</div>
                           <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-slate-100 text-slate-700">
                             {r.slot === 'HELE_DAG' ? 'Volledige Dag' : r.slot}
                           </span>
@@ -2095,7 +2097,7 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                 <div className="flex justify-between">
                   <span className="text-slate-500 font-medium">Datum & Dagdeel:</span>
                   <span className="font-bold text-slate-900">
-                    {rejectModalRequest.date} ({rejectModalRequest.slot === 'HELE_DAG' ? 'Hele dag' : rejectModalRequest.slot})
+                    {formatBelgianDate(rejectModalRequest.date)} ({rejectModalRequest.slot === 'HELE_DAG' ? 'Hele dag' : rejectModalRequest.slot})
                   </span>
                 </div>
                 <div className="flex justify-between">

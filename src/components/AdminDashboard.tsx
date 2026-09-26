@@ -8,7 +8,7 @@ import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timeshee
 import GoogleSheetsBackupSection from './GoogleSheetsBackupSection';
 import { LeavePlanningModule } from './leave/LeavePlanningModule';
 import { TeamsChatAndLogModule } from './TeamsChatAndLogModule';
-import { syncStaffBetweenConfigAndLeave } from '../services/leaveService';
+import { syncStaffBetweenConfigAndLeave, formatBelgianDate } from '../services/leaveService';
 import { getDetectedEnvironment, setEnvironmentOverride, isTestEnvironment, AppEnvironment } from '../config/environment';
 import { cloneProductionStaffToTest, resetTestDatabase } from '../firebase';
 import { 
@@ -2071,7 +2071,7 @@ export default function AdminDashboard({
 
                               return (
                                 <tr key={ts.id} className="hover:bg-slate-50 transition">
-                                  <td className="p-3 font-medium text-slate-800">{ts.date || '-'}</td>
+                                  <td className="p-3 font-medium text-slate-800">{ts.date ? formatBelgianDate(ts.date) : '-'}</td>
                                   <td className="p-3 text-slate-600">{ts.staffName || '-'}</td>
                                   <td className="p-3 text-slate-600 font-mono">{inTimeStr}</td>
                                   <td className="p-3 text-slate-600 font-mono">

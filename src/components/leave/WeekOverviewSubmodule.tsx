@@ -117,51 +117,7 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
     isOverridden?: boolean;
   } | null>(null);
 
-  // Rejection modal state
-  const [rejectModalRequest, setRejectModalRequest] = useState<LeaveRequest | null>(null);
-  const [rejectReasonText, setRejectReasonText] = useState<string>('');
-  const [rejectReasonError, setRejectReasonError] = useState<string | null>(null);
 
-  // Direct 1-click approve from the overview grid
-  const handleDirectApprove = async (requestId: string) => {
-    if (!onUpdateLeaveStatus) return;
-    try {
-      await onUpdateLeaveStatus(requestId, 'goedgekeurd');
-    } catch (err) {
-      console.error('Fout bij direct goedkeuren van verlofaanvraag:', err);
-    }
-  };
-
-  // Direct reject opens the rejection modal requiring a reason
-  const handleDirectReject = (target: LeaveRequest | string) => {
-    const req = typeof target === 'string' ? leaveRequests.find(r => r.id === target) : target;
-    if (req) {
-      setRejectModalRequest(req);
-      setRejectReasonText('');
-      setRejectReasonError(null);
-    }
-  };
-
-  const handleConfirmReject = async () => {
-    if (!rejectModalRequest || !onUpdateLeaveStatus) return;
-    const trimmed = rejectReasonText.trim();
-    if (!trimmed) {
-      setRejectReasonError('Gelieve een reden voor de afkeuring in te vullen.');
-      return;
-    }
-    try {
-      await onUpdateLeaveStatus(rejectModalRequest.id, 'afgekeurd', trimmed);
-      setRejectModalRequest(null);
-      setRejectReasonText('');
-      setRejectReasonError(null);
-      if (activeQuickSlot?.currentLeave?.id === rejectModalRequest.id) {
-        setActiveQuickSlot(null);
-      }
-    } catch (err) {
-      console.error('Fout bij afkeuren van verlofaanvraag:', err);
-      setRejectReasonError('Er is een fout opgetreden bij het afkeuren.');
-    }
-  };
 
   // Calculate week details
   const weekInfo = useMemo(() => getISOWeekDetails(currentDate), [currentDate]);
@@ -935,8 +891,6 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                           <InteractiveSlotCell
                             status={vmStatus}
                             staff={doctor}
-                            onDirectApprove={handleDirectApprove}
-                            onDirectReject={handleDirectReject}
                             onClick={() => {
                               setActiveQuickSlot({
                                 staff: doctor,
@@ -958,8 +912,6 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                           <InteractiveSlotCell
                             status={nmStatus}
                             staff={doctor}
-                            onDirectApprove={handleDirectApprove}
-                            onDirectReject={handleDirectReject}
                             onClick={() => {
                               setActiveQuickSlot({
                                 staff: doctor,
@@ -1008,8 +960,6 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                           <InteractiveSlotCell
                             status={vmStatus}
                             staff={nurse}
-                            onDirectApprove={handleDirectApprove}
-                            onDirectReject={handleDirectReject}
                             onClick={() => {
                               setActiveQuickSlot({
                                 staff: nurse,
@@ -1031,8 +981,6 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                           <InteractiveSlotCell
                             status={nmStatus}
                             staff={nurse}
-                            onDirectApprove={handleDirectApprove}
-                            onDirectReject={handleDirectReject}
                             onClick={() => {
                               setActiveQuickSlot({
                                 staff: nurse,
@@ -1165,41 +1113,14 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                   ) : activeQuickSlot.currentLeave.type === 'gecompenseerd' ? (
                     <>
                       {/* Notice: Approvals can only be made via the checkmark in the grid */}
+                      {/* Notice: Approvals can only be made in the approval tab */}
                       {activeQuickSlot.currentLeave.status === 'aangevraagd' && (
-                        <div className="p-3 bg-teal-50/80 border border-teal-200/80 rounded-xl flex items-center gap-2.5 text-xs text-teal-900">
-                          <Info className="w-4 h-4 text-teal-700 shrink-0" />
+                        <div className="p-3 bg-amber-50/90 border border-amber-200/90 rounded-xl flex items-center gap-2.5 text-xs text-amber-900">
+                          <Info className="w-4 h-4 text-amber-700 shrink-0" />
                           <span>
-                            <strong>Goedkeuren:</strong> Klik op het groene vinkje (✓) in het weekoverzicht om goed te keuren.
+                            <strong>Beoordelen:</strong> Goedkeuren en afkeuren kan enkel in het tabblad <strong>'Verlof Goedkeuren'</strong>.
                           </span>
                         </div>
-                      )}
-
-                      {/* Afkeuren with Reason button if pending */}
-                      {activeQuickSlot.currentLeave.status === 'aangevraagd' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const req = activeQuickSlot.currentLeave!;
-                            setActiveQuickSlot(null);
-                            handleDirectReject(req);
-                          }}
-                          className="w-full p-2.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-400 text-red-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-red-600 text-white flex items-center justify-center font-bold shrink-0">
-                              <X className="w-4 h-4 stroke-[2.5]" />
-                            </div>
-                            <div className="text-left">
-                              <span className="font-extrabold text-xs block">
-                                Aanvraag Afkeuren met Reden
-                              </span>
-                              <span className="text-[11px] text-red-700/80">
-                                Wijst deze aanvraag af met verplichte toelichting
-                              </span>
-                            </div>
-                          </div>
-                          <span className="text-xs font-bold text-red-700 shrink-0">Afkeuren ✕</span>
-                        </button>
                       )}
 
                       {/* Cancel / Withdraw Gecompenseerde Werkdag */}
@@ -1229,42 +1150,14 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                   ) : (
                     /* Normal Leave (Regulier or Verplicht) */
                     <>
-                      {/* Notice: Approvals can only be made via the checkmark in the grid or approval tab */}
+                      {/* Notice: Approvals only in approval tab */}
                       {activeQuickSlot.currentLeave.status === 'aangevraagd' && (
-                        <div className="p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl flex items-center gap-2.5 text-xs text-amber-900">
+                        <div className="p-3 bg-amber-50/90 border border-amber-200/90 rounded-xl flex items-center gap-2.5 text-xs text-amber-900">
                           <Info className="w-4 h-4 text-amber-700 shrink-0" />
                           <span>
-                            <strong>Goedkeuren:</strong> Klik op het groene vinkje (✓) in het overzicht of gebruik de wachtrijlijst in het tabblad 'Beoordelen'.
+                            <strong>Beoordelen:</strong> Goedkeuren en afkeuren kan enkel in het tabblad <strong>'Verlof Goedkeuren'</strong>.
                           </span>
                         </div>
-                      )}
-
-                      {/* Afkeuren with Reason button if pending */}
-                      {activeQuickSlot.currentLeave.status === 'aangevraagd' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const req = activeQuickSlot.currentLeave!;
-                            setActiveQuickSlot(null);
-                            handleDirectReject(req);
-                          }}
-                          className="w-full p-2.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-400 text-red-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-red-600 text-white flex items-center justify-center font-bold shrink-0">
-                              <X className="w-4 h-4 stroke-[2.5]" />
-                            </div>
-                            <div className="text-left">
-                              <span className="font-extrabold text-xs block">
-                                Aanvraag Afkeuren met Reden
-                              </span>
-                              <span className="text-[11px] text-red-700/80">
-                                Wijst deze verlofaanvraag af met verplichte toelichting
-                              </span>
-                            </div>
-                          </div>
-                          <span className="text-xs font-bold text-red-700 shrink-0">Afkeuren ✕</span>
-                        </button>
                       )}
 
                       {/* Switch to Regulier */}
@@ -1553,100 +1446,7 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
         </div>
       )}
 
-      {/* REJECTION REASON MODAL */}
-      {rejectModalRequest && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 bg-red-50 border-b border-red-100 flex items-center justify-between">
-              <div className="flex items-center gap-2.5 text-red-700">
-                <div className="w-8 h-8 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0">
-                  <X className="w-4 h-4 stroke-[2.5]" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-sm text-red-950">Verlofaanvraag Afkeuren</h3>
-                  <p className="text-[11px] text-red-700">Geef een verplichte reden op voor deze afkeuring</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setRejectModalRequest(null);
-                  setRejectReasonText('');
-                  setRejectReasonError(null);
-                }}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-white/80 transition cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              {/* Request summary */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-500 font-medium">Medewerker:</span>
-                  <span className="font-bold text-slate-900">{rejectModalRequest.staff_name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500 font-medium">Datum & Dagdeel:</span>
-                  <span className="font-bold text-slate-900">
-                    {rejectModalRequest.date} ({rejectModalRequest.slot === 'HELE_DAG' ? 'Hele dag' : rejectModalRequest.slot})
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500 font-medium">Type:</span>
-                  <span className="font-bold text-slate-900 capitalize">{rejectModalRequest.type} verlof</span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Reden van afkeuring <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  value={rejectReasonText}
-                  onChange={(e) => {
-                    setRejectReasonText(e.target.value);
-                    if (rejectReasonError) setRejectReasonError(null);
-                  }}
-                  placeholder="Typ hier de reden (bijv. bezettingsnorm niet gehaald, geen vervanging mogelijk)..."
-                  rows={3}
-                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white transition resize-none"
-                  autoFocus
-                />
-                {rejectReasonError && (
-                  <p className="text-xs text-red-600 font-medium mt-1 flex items-center gap-1">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    <span>{rejectReasonError}</span>
-                  </p>
-                )}
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRejectModalRequest(null);
-                    setRejectReasonText('');
-                    setRejectReasonError(null);
-                  }}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition cursor-pointer"
-                >
-                  Annuleren
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmReject}
-                  className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>Afkeuring Bevestigen</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* End of Quick Action Modal */}
     </div>
   );
 };
@@ -1659,16 +1459,12 @@ interface InteractiveSlotCellProps {
     isOverridden?: boolean;
   };
   staff: StaffMember;
-  onDirectApprove?: (requestId: string) => void;
-  onDirectReject?: (target: LeaveRequest) => void;
   onClick: () => void;
 }
 
 const InteractiveSlotCell: React.FC<InteractiveSlotCellProps> = ({
   status,
   staff: _staff,
-  onDirectApprove,
-  onDirectReject,
   onClick
 }) => {
   const { isScheduled, leaveRequest, rawLeaveRequest } = status;
@@ -1702,10 +1498,11 @@ const InteractiveSlotCell: React.FC<InteractiveSlotCellProps> = ({
       );
     }
 
-    // 1B. IN AANVRAAG -> Direct Goedkeuren (✓) & Afkeuren (✕) knoppen in de cel
+    // 1B. IN AANVRAAG -> Status indicatie (Goedkeuren/afkeuren gebeurt uitsluitend via tabblad 'Verlof Goedkeuren')
     if (isPending) {
       return (
-        <div
+        <button
+          type="button"
           onClick={onClick}
           title={`In Aanvraag: ${
             isCompensated
@@ -1713,8 +1510,8 @@ const InteractiveSlotCell: React.FC<InteractiveSlotCellProps> = ({
               : isCompulsory
               ? 'Verplicht verlof'
               : 'Regulier verlof'
-          }. Klik op ✓ om direct goed te keuren, ✕ om af te keuren met reden.`}
-          className={`w-full min-h-[44px] rounded-lg p-1 flex flex-col items-center justify-between transition cursor-pointer shadow-2xs group relative border-2 border-dashed ${
+          }. Beoordelen kan enkel via het tabblad 'Verlof Goedkeuren'. Klik voor details.`}
+          className={`w-full min-h-[44px] rounded-lg p-1.5 flex flex-col items-center justify-center transition cursor-pointer shadow-2xs group relative border-2 border-dashed ${
             isCompensated
               ? 'bg-teal-50 hover:bg-teal-100/90 border-teal-500 text-teal-950'
               : isCompulsory
@@ -1722,43 +1519,16 @@ const InteractiveSlotCell: React.FC<InteractiveSlotCellProps> = ({
               : 'bg-indigo-50 hover:bg-indigo-100/90 border-indigo-400 text-indigo-950'
           }`}
         >
-          <div className="flex items-center justify-between w-full px-0.5">
-            <span className="text-[9px] font-black leading-none truncate">
+          <div className="flex items-center gap-1">
+            <Clock className="w-3 h-3 text-amber-600 shrink-0 animate-pulse" />
+            <span className="text-[10px] font-black leading-none truncate">
               {isCompensated ? 'Gecomp.' : isCompulsory ? 'Verpl.' : 'Verlof'}
             </span>
-            <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0 animate-pulse" />
           </div>
-
-          {/* Rechtstreeks Goedkeuren / Afkeuren buttons */}
-          <div className="flex items-center justify-center gap-1.5 w-full mt-0.5">
-            {onDirectApprove && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDirectApprove(req.id);
-                }}
-                title="Direct Goedkeuren (1-klik)"
-                className="w-5 h-5 rounded bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition shadow-xs hover:scale-110 cursor-pointer shrink-0"
-              >
-                <Check className="w-3.5 h-3.5 stroke-[3]" />
-              </button>
-            )}
-            {onDirectReject && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDirectReject(req);
-                }}
-                title="Afkeuren met reden"
-                className="w-5 h-5 rounded bg-white hover:bg-red-50 text-red-600 border border-red-300 hover:border-red-400 flex items-center justify-center transition shadow-xs hover:scale-110 cursor-pointer shrink-0"
-              >
-                <X className="w-3 h-3 stroke-[2.5]" />
-              </button>
-            )}
-          </div>
-        </div>
+          <span className="text-[9px] font-bold text-amber-800 mt-1 px-1.5 py-0.5 rounded bg-amber-100/80 border border-amber-200/60 leading-none">
+            In Aanvraag
+          </span>
+        </button>
       );
     }
 

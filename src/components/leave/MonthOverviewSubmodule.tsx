@@ -16,6 +16,7 @@ import {
   getMonthCalendarWeeks,
   getStaffColorConfig,
   validateLeaveRequest,
+  formatBelgianDate,
   MonthCalendarWeek
 } from '../../services/leaveService';
 import {
@@ -690,7 +691,7 @@ export const MonthOverviewSubmodule: React.FC<MonthOverviewSubmoduleProps> = ({
                       key={req.id}
                       className="p-1.5 bg-slate-50 rounded border border-slate-200/60 flex items-center justify-between text-[11px]"
                     >
-                      <span className="font-semibold text-slate-700">{req.date}</span>
+                      <span className="font-semibold text-slate-700">{formatBelgianDate(req.date)}</span>
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] text-slate-500">
                           {req.slot === 'HELE_DAG' ? 'Hele dag' : req.slot}
@@ -699,7 +700,7 @@ export const MonthOverviewSubmodule: React.FC<MonthOverviewSubmoduleProps> = ({
                           <button
                             type="button"
                             onClick={async () => {
-                              if (window.confirm(`Verlof op ${req.date} annuleren?`)) {
+                              if (window.confirm(`Verlof op ${formatBelgianDate(req.date)} annuleren?`)) {
                                 await onDirectCancelLeave(req.id);
                                 setActiveSpanModal(null);
                               }

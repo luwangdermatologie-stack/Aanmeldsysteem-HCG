@@ -508,6 +508,46 @@ export function syncBelgianPublicHolidays(
 }
 
 /**
+ * Formats a date string (e.g. YYYY-MM-DD, YYYY/MM/DD, YYYY/M/D) to standard Belgian format (DD/MM/YYYY).
+ */
+export function formatBelgianDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+  const clean = String(dateStr).trim();
+  if (!clean) return '';
+
+  // Extract date part if ISO string with time
+  const dateOnly = clean.includes('T') ? clean.split('T')[0] : clean;
+  const parts = dateOnly.split(/[-/]/);
+
+  if (parts.length === 3) {
+    if (parts[0].length === 4) {
+      // YYYY-MM-DD or YYYY/MM/DD
+      const [year, month, day] = parts;
+      const dd = day.padStart(2, '0');
+      const mm = month.padStart(2, '0');
+      return `${dd}/${mm}/${year}`;
+    } else if (parts[2].length === 4) {
+      // DD/MM/YYYY or DD-MM-YYYY
+      const [day, month, year] = parts;
+      const dd = day.padStart(2, '0');
+      const mm = month.padStart(2, '0');
+      return `${dd}/${mm}/${year}`;
+    }
+  }
+
+  // Fallback to Date object parsing
+  const d = new Date(clean);
+  if (!isNaN(d.getTime())) {
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  return clean;
+}
+
+/**
  * Returns ISO week number and year, with 5 workdays (Monday-Friday) and Belgian holiday detection
  */
 export function getISOWeekDetails(date: Date) {

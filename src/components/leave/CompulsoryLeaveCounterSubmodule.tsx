@@ -6,6 +6,7 @@
 import React, { useMemo, useState } from 'react';
 import { StaffMember, LeaveRequest } from '../../types';
 import { Calendar, Briefcase, TrendingDown, Sparkles } from 'lucide-react';
+import { formatBelgianDate } from '../../services/leaveService';
 
 interface CompulsoryLeaveCounterSubmoduleProps {
   staffList: StaffMember[];
@@ -181,7 +182,7 @@ export const CompulsoryLeaveCounterSubmodule: React.FC<CompulsoryLeaveCounterSub
                           )}
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-slate-800">{item.date}</span>
+                              <span className="font-bold text-slate-800">{formatBelgianDate(item.date)}</span>
                               <span className="text-slate-500 font-semibold">({item.slot})</span>
                               {isPending && (
                                 <span className="text-[9px] px-1 py-0.2 rounded bg-amber-100 text-amber-800 font-semibold">

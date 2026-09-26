@@ -17,7 +17,8 @@ import {
   DAYS_OF_WEEK,
   validateLeaveRequest,
   calculateCompulsoryLeaveCounter,
-  getStaffWeeklyScheduledSlots
+  getStaffWeeklyScheduledSlots,
+  formatBelgianDate
 } from '../../services/leaveService';
 import {
   Calendar,
@@ -713,7 +714,7 @@ export const LeaveRequestsSubmodule: React.FC<LeaveRequestsSubmoduleProps> = ({
                   return (
                     <tr key={req.id} className="hover:bg-slate-50 transition">
                       <td className="p-3 font-bold text-slate-800">
-                        {req.date}
+                        {formatBelgianDate(req.date)}
                       </td>
                       <td className="p-3 font-semibold text-slate-800">
                         {req.staff_name || staff?.name || 'Onbekend'}
@@ -777,28 +778,6 @@ export const LeaveRequestsSubmodule: React.FC<LeaveRequestsSubmoduleProps> = ({
                       </td>
                       <td className="p-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {req.status !== 'goedgekeurd' && (
-                            <button
-                              type="button"
-                              onClick={() => onUpdateLeaveStatus(req.id, 'goedgekeurd')}
-                              className="p-1 px-2 text-[10px] font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                              title="Goedkeuren"
-                            >
-                              <Check className="w-3 h-3" />
-                              Goedkeuren
-                            </button>
-                          )}
-                          {req.status !== 'afgekeurd' && (
-                            <button
-                              type="button"
-                              onClick={() => onUpdateLeaveStatus(req.id, 'afgekeurd')}
-                              className="p-1 px-2 text-[10px] font-bold rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200 hover:border-rose-200 transition cursor-pointer flex items-center gap-1"
-                              title="Afkeuren"
-                            >
-                              <X className="w-3 h-3" />
-                              Afkeuren
-                            </button>
-                          )}
                           <button
                             type="button"
                             onClick={() => onDeleteLeaveRequest(req.id)}

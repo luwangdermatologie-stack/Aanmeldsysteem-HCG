@@ -33,6 +33,7 @@ import {
   extractSpreadsheetId 
 } from '../services/googleSheetsService';
 import { restoreLeaveRequestsFromGoogleSheets } from '../services/leaveSheetsBackup';
+import { formatBelgianDate } from '../services/leaveService';
 
 export interface BackupRestoreModalProps {
   isOpen: boolean;
@@ -457,7 +458,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
                     <tbody className="divide-y divide-slate-100 font-medium">
                       {previewTimesheets.slice(0, 5).map((ts, idx) => (
                         <tr key={idx} className="hover:bg-slate-50">
-                          <td className="p-2 font-mono text-slate-700">{ts.date}</td>
+                          <td className="p-2 font-mono text-slate-700">{formatBelgianDate(ts.date)}</td>
                           <td className="p-2 text-slate-900">{ts.staffName}</td>
                           <td className="p-2 font-mono text-slate-600">
                             {ts.clockIn ? ts.clockIn.substring(11, 16) || ts.clockIn : '-'}
@@ -484,7 +485,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
                     <tbody className="divide-y divide-slate-100 font-medium">
                       {previewLeaveRequests.slice(0, 5).map((req, idx) => (
                         <tr key={idx} className="hover:bg-slate-50">
-                          <td className="p-2 font-mono text-slate-700">{req.date}</td>
+                          <td className="p-2 font-mono text-slate-700">{formatBelgianDate(req.date)}</td>
                           <td className="p-2 text-slate-900">{req.staff_name}</td>
                           <td className="p-2 text-slate-600">
                             {req.slot === 'HELE_DAG' ? 'Hele dag' : req.slot}
