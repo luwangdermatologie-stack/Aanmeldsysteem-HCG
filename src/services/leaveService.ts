@@ -666,12 +666,41 @@ export function validateLeaveRequest(
   const daySchedule = staff.schedule?.[dayKey] || { vm: false, nm: false };
   const dayLabel = DAYS_OF_WEEK.find(d => d.key === dayKey)?.label || dayKey;
 
-  // 1. Role validation: Doctors can only take 'regulier'
+  // 1. Role validation: Doctors can only take 'regulier' or request 'extra_dienst'
   if (staff.role === 'arts' && (type === 'verplicht' || type === 'gecompenseerd')) {
     return {
       valid: false,
-      error: `Artsen kunnen enkel 'Regulier verlof' aanvragen. 'Verplicht verlof' en 'Gecompenseerde werkdagen' zijn gekoppeld aan de urenregistratie en verlofteller van verpleegkundigen.`
+      error: `Artsen kunnen enkel 'Regulier verlof' of een 'Extra dienst' aanvragen. 'Verplicht verlof' en 'Gecompenseerde werkdagen' zijn gekoppeld aan de urenregistratie en verlofteller van verpleegkundigen.`
     };
+  }
+
+  // 1b. Extra dienst: Artsen die op een vrij moment extra komen werken
+  if (type === 'extra_dienst') {
+    if (staff.role !== 'arts') {
+      return {
+        valid: false,
+        error: `Extra dienst aanvragen is bedoeld voor artsen. Verpleegkundigen kunnen gecompenseerde werkdagen aanvragen.`
+      };
+    }
+    if (slot === 'VM' && daySchedule.vm) {
+      return {
+        valid: false,
+        error: `${staff.name} staat volgens het vaste werkschema op ${dayLabel}voormiddag (VM) al standaard ingeroosterd om te werken.`
+      };
+    }
+    if (slot === 'NM' && daySchedule.nm) {
+      return {
+        valid: false,
+        error: `${staff.name} staat volgens het vaste werkschema op ${dayLabel}namiddag (NM) al standaard ingeroosterd om te werken.`
+      };
+    }
+    if (slot === 'HELE_DAG' && daySchedule.vm && daySchedule.nm) {
+      return {
+        valid: false,
+        error: `${staff.name} staat op ${dayLabel} al de volledige dag ingeroosterd om te werken.`
+      };
+    }
+    return { valid: true };
   }
 
   // 2. Gecompenseerde werkdag: Extra moment komen werken

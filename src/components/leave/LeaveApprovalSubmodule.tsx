@@ -49,7 +49,8 @@ import {
   RefreshCw,
   Sparkles,
   Briefcase,
-  Info
+  Info,
+  UserPlus
 } from 'lucide-react';
 
 export interface LeaveApprovalSubmoduleProps {
@@ -327,8 +328,9 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
       let vmDocs = 0;
       doctors.forEach(doc => {
         const status = getSlotStatus(doc, d.dayKey, d.dateStr, 'vm');
-        // If on leave (and not rejected), doc is not present
-        if (status.isScheduled && (!status.leaveRequest || status.leaveRequest.status === 'afgekeurd')) {
+        const isExtraWorking = !status.isScheduled && status.leaveRequest?.type === 'extra_dienst' && status.leaveRequest.status === 'goedgekeurd';
+        const isNormalWorking = status.isScheduled && (!status.leaveRequest || status.leaveRequest.type === 'extra_dienst' || status.leaveRequest.status === 'afgekeurd');
+        if (isNormalWorking || isExtraWorking) {
           vmDocs++;
         }
       });
@@ -345,7 +347,9 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
       let nmDocs = 0;
       doctors.forEach(doc => {
         const status = getSlotStatus(doc, d.dayKey, d.dateStr, 'nm');
-        if (status.isScheduled && (!status.leaveRequest || status.leaveRequest.status === 'afgekeurd')) {
+        const isExtraWorking = !status.isScheduled && status.leaveRequest?.type === 'extra_dienst' && status.leaveRequest.status === 'goedgekeurd';
+        const isNormalWorking = status.isScheduled && (!status.leaveRequest || status.leaveRequest.type === 'extra_dienst' || status.leaveRequest.status === 'afgekeurd');
+        if (isNormalWorking || isExtraWorking) {
           nmDocs++;
         }
       });
@@ -1549,6 +1553,8 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                                 ? 'bg-rose-50 text-rose-900 border border-rose-300'
                                 : r.type === 'gecompenseerd'
                                 ? 'bg-teal-50 text-teal-800 border border-teal-300'
+                                : r.type === 'extra_dienst'
+                                ? 'bg-blue-50 text-blue-900 border border-blue-300'
                                 : r.type === 'verplicht'
                                 ? 'bg-amber-50 text-amber-800 border border-amber-200'
                                 : 'bg-blue-50 text-blue-800 border border-blue-200'
@@ -1558,6 +1564,8 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                               ? '🇧🇪 Feestdag (Wettelijk)'
                               : r.type === 'gecompenseerd'
                               ? `Gecompenseerd (-${r.units}d)`
+                              : r.type === 'extra_dienst'
+                              ? `Extra Dienst (+${r.units}d)`
                               : r.type === 'verplicht'
                               ? `Verplicht verlof (+${r.units}d)`
                               : `Regulier (${r.units}d)`}
@@ -1730,12 +1738,14 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                         <span className="text-xs font-bold text-slate-600">
                           {activeApprovalSlot.leaveRequest.type === 'feestdag'
                             ? '🇧🇪 Wettelijke Belgische Feestdag'
+                            : activeApprovalSlot.leaveRequest.type === 'extra_dienst'
+                            ? 'Extra dienst (Arts)'
                             : activeApprovalSlot.leaveRequest.type === 'gecompenseerd'
                             ? 'Gecompenseerde werkdag'
                             : activeApprovalSlot.leaveRequest.type === 'verplicht'
                             ? 'Verplicht verlof'
                             : 'Regulier'}{' '}
-                          ({activeApprovalSlot.leaveRequest.type === 'gecompenseerd' ? '-' : ''}
+                          ({activeApprovalSlot.leaveRequest.type === 'gecompenseerd' ? '-' : activeApprovalSlot.leaveRequest.type === 'extra_dienst' ? '+' : ''}
                           {activeApprovalSlot.leaveRequest.units}d)
                         </span>
                       </div>
@@ -1770,21 +1780,25 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                     </div>
                   ) : (
                     <div className="space-y-3 pt-1">
-                      <div className="p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl flex items-center gap-2.5 text-xs text-amber-900">
-                        <Info className="w-4 h-4 text-amber-700 shrink-0" />
-                        <span>
-                          <strong>Goedkeuren:</strong> Goedkeuren kan direct via het groene vinkje (✓) in het weekrooster of via de wachtrijlijst.
-                        </span>
-                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleApproveStatus('goedgekeurd')}
+                          className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          <Check className="w-4 h-4 stroke-[3]" />
+                          <span>
+                            {activeApprovalSlot.leaveRequest.type === 'extra_dienst' ? 'Extra Dienst Goedkeuren' : 'Goedkeuren'}
+                          </span>
+                        </button>
 
-                      <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => handleApproveStatus('on_hold')}
                           className="py-2.5 px-3 bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                         >
                           <PauseCircle className="w-4 h-4" />
-                          <span>On Hold Zetten</span>
+                          <span>On Hold</span>
                         </button>
 
                         <button
@@ -2191,6 +2205,7 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
     const isPending = req.status === 'aangevraagd';
     const isOnHold = req.status === 'on_hold';
     const isRejected = req.status === 'afgekeurd';
+    const isExtraShift = req.type === 'extra_dienst';
     const isCompulsory = req.type === 'verplicht';
     const isCompensated = req.type === 'gecompenseerd';
     const isHoliday = req.type === 'feestdag';
@@ -2220,14 +2235,18 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
         <div
           onClick={onClick}
           title={`In Aanvraag: ${
-            isCompensated
+            isExtraShift
+              ? 'Extra Dienst (Arts)'
+              : isCompensated
               ? 'Gecompenseerde Werkdag (-0.5d teller)'
               : isCompulsory
               ? 'Verplicht verlof'
               : 'Regulier verlof'
           }. Klik op ✓ om direct goed te keuren, ✕ om af te keuren, of klik op het vakje voor alle opties.`}
           className={`w-full min-h-[44px] rounded-lg p-1 flex flex-col items-center justify-between transition cursor-pointer shadow-2xs group relative border-2 border-dashed ${
-            isCompensated
+            isExtraShift
+              ? 'bg-blue-50 hover:bg-blue-100/90 border-blue-400 text-blue-950'
+              : isCompensated
               ? 'bg-teal-50 hover:bg-teal-100/90 border-teal-500 text-teal-950'
               : isCompulsory
               ? 'bg-amber-50 hover:bg-amber-100/90 border-amber-400 text-amber-950'
@@ -2236,7 +2255,7 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
         >
           <div className="flex items-center justify-between w-full px-0.5">
             <span className="text-[9px] font-black leading-none truncate">
-              {isCompensated ? 'Gecomp.' : isCompulsory ? 'Verpl.' : 'Verlof'}
+              {isExtraShift ? 'Extra Dienst' : isCompensated ? 'Gecomp.' : isCompulsory ? 'Verpl.' : 'Verlof'}
             </span>
             <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0 animate-pulse" />
           </div>
@@ -2318,15 +2337,19 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
       return (
         <div
           onClick={onClick}
-          title={`Goedgekeurd ${
-            isCompensated
+          title={`Goedgekeurd: ${
+            isExtraShift
+              ? 'Extra Dienst (Arts)'
+              : isCompensated
               ? 'Gecompenseerde Werkdag (-0.5d teller)'
               : isCompulsory
               ? 'Verplicht verlof'
               : 'Regulier verlof'
           }. Klik om details te zien of status aan te passen.`}
           className={`w-full min-h-[44px] rounded-lg p-1 flex flex-col items-center justify-center transition cursor-pointer shadow-2xs group relative border ${
-            isCompensated
+            isExtraShift
+              ? 'bg-blue-100 hover:bg-blue-200/90 border-blue-400 text-blue-950'
+              : isCompensated
               ? 'bg-teal-100 hover:bg-teal-200/90 border-teal-400 text-teal-950'
               : isCompulsory
               ? 'bg-amber-100 hover:bg-amber-200/90 border-amber-300 text-amber-950'
@@ -2334,7 +2357,9 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
           }`}
         >
           <div className="flex items-center gap-1">
-            {isCompensated ? (
+            {isExtraShift ? (
+              <UserPlus className="w-3 h-3 text-blue-700" />
+            ) : isCompensated ? (
               <Briefcase className="w-3 h-3 text-teal-700" />
             ) : isCompulsory ? (
               <Sparkles className="w-3 h-3 text-amber-700" />
@@ -2344,7 +2369,7 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
             <Check className="w-2.5 h-2.5 text-emerald-600 stroke-[3]" />
           </div>
           <span className="text-[9px] font-extrabold leading-none mt-0.5">
-            {isCompensated ? 'Gecomp.' : isCompulsory ? 'Verpl.' : 'Verlof'}
+            {isExtraShift ? '+ Dienst' : isCompensated ? 'Gecomp.' : isCompulsory ? 'Verpl.' : 'Verlof'}
           </span>
 
           {/* Snelle actie op hover: direct intrekken / afkeuren */}

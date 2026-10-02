@@ -21,9 +21,12 @@ import {
   AlertCircle,
   LogOut,
   Check,
-  RotateCcw
+  RotateCcw,
+  Copy,
+  ShieldAlert
 } from 'lucide-react';
 import { BackupRestoreModal } from './BackupRestoreModal';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 interface GoogleSheetsBackupSectionProps {
   timesheets: Timesheet[];
@@ -47,6 +50,8 @@ export default function GoogleSheetsBackupSection({
   const [syncFeedback, setSyncFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
 
   // Listen to auth state
   useEffect(() => {
@@ -68,6 +73,7 @@ export default function GoogleSheetsBackupSection({
   const handleLogin = async () => {
     setIsLoggingIn(true);
     setSyncFeedback(null);
+    setUnauthorizedDomain(null);
     try {
       const res = await googleSignIn();
       if (!res) {
@@ -92,6 +98,18 @@ export default function GoogleSheetsBackupSection({
       }
 
       console.error('Google Sign In failed:', err);
+
+      const isUnauthorizedDomain =
+        err?.code === 'auth/unauthorized-domain' ||
+        err?.message?.includes('unauthorized-domain');
+
+      if (isUnauthorizedDomain) {
+        const curHost = typeof window !== 'undefined' ? window.location.hostname : '';
+        setUnauthorizedDomain(curHost);
+        setSyncFeedback(null);
+        return;
+      }
+
       let errorMsg = err.message || 'Inloggen met Google is mislukt.';
       if (err?.code === 'auth/popup-blocked') {
         errorMsg = 'De Google inlog pop-up werd geblokkeerd door uw browser. Sta pop-ups toe in de browserbalk.';
@@ -273,6 +291,83 @@ export default function GoogleSheetsBackupSection({
           )}
         </div>
       </div>
+
+      {/* Unauthorized Domain Guide Card */}
+      {unauthorizedDomain && (
+        <div className="bg-amber-50/90 border-2 border-amber-300 rounded-2xl p-4 space-y-3 shadow-xs">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
+              <ShieldAlert className="w-5 h-5" />
+            </div>
+            <div className="space-y-1 flex-1">
+              <h5 className="font-extrabold text-amber-950 text-xs flex items-center gap-1.5 flex-wrap">
+                <span>Domein nog niet geautoriseerd in Firebase (auth/unauthorized-domain)</span>
+              </h5>
+              <p className="text-[11px] text-amber-900 leading-relaxed">
+                Firebase Authentication beveiligt Google Sign-In en vereist dat het webdomein waarop deze applicatie draait eenmalig wordt toegevoegd aan de lijst met <strong>Geautoriseerde domeinen</strong> in uw Firebase Console.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white/95 border border-amber-200 rounded-xl p-3 space-y-2.5 text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200/80">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Gedetecteerd Actief Domein</span>
+                <span className="font-mono font-bold text-slate-900 text-xs break-all select-all">{unauthorizedDomain}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator?.clipboard) {
+                    navigator.clipboard.writeText(unauthorizedDomain);
+                    setCopiedDomain(true);
+                    setTimeout(() => setCopiedDomain(false), 2500);
+                  }
+                }}
+                className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                {copiedDomain ? <Check className="w-3.5 h-3.5 text-emerald-700 stroke-[3]" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedDomain ? 'Gekopieerd!' : 'Kopieer domein'}</span>
+              </button>
+            </div>
+
+            <div className="border-t border-amber-100 pt-2 text-[11px] text-slate-700 space-y-1.5">
+              <span className="font-bold text-slate-800 block">Hoe lost u dit in 1 minuut op:</span>
+              <ol className="list-decimal list-inside space-y-1 text-slate-600 pl-0.5">
+                <li>Klik hieronder op <strong>Open Firebase Console (Instellingen)</strong>.</li>
+                <li>Scroll naar de sectie <strong>Geautoriseerde domeinen</strong> (<em>Authorized domains</em>) en klik op <strong>Domein toevoegen</strong> (<em>Add domain</em>).</li>
+                <li>Plak het gekopieerde domein (<code className="bg-slate-100 px-1 py-0.5 rounded text-amber-900 font-mono text-[10px]">{unauthorizedDomain}</code>) of voeg <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-900 font-mono text-[10px]">europe-west2.run.app</code> toe om alle URL's te dekken en klik op <strong>Toevoegen</strong>.</li>
+                <li>Keer terug naar dit scherm en klik op <strong>Opnieuw Proberen</strong>.</li>
+              </ol>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap pt-0.5">
+            <a
+              href={`https://console.firebase.google.com/project/${(firebaseConfig as any).projectId || 'gen-lang-client-0338487005'}/authentication/settings`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Open Firebase Console (Instellingen) ↗</span>
+            </a>
+
+            <button
+              type="button"
+              onClick={() => {
+                setUnauthorizedDomain(null);
+                handleLogin();
+              }}
+              disabled={isLoggingIn}
+              className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoggingIn ? 'animate-spin' : ''}`} />
+              <span>{isLoggingIn ? 'Bezig...' : 'Opnieuw Proberen'}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Feedback Messages */}
       {syncFeedback && (

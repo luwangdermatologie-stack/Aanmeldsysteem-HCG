@@ -71,6 +71,11 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       return null;
     }
 
+    if (error?.code === 'auth/unauthorized-domain' || error?.message?.includes('unauthorized-domain')) {
+      const hostname = typeof window !== 'undefined' ? window.location.hostname : 'dit domein';
+      error.message = `Het domein '${hostname}' is nog niet geautoriseerd in Firebase Authentication. Voeg dit domein toe in Firebase Console > Authentication > Settings > Authorized domains.`;
+    }
+
     console.error('Google Sign In error:', error);
     throw error;
   } finally {

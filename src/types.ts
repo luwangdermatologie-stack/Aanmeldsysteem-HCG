@@ -123,7 +123,7 @@ export interface StaffMember {
 }
 
 export type LeaveSlot = 'VM' | 'NM' | 'HELE_DAG';
-export type LeaveType = 'regulier' | 'verplicht' | 'gecompenseerd' | 'feestdag';
+export type LeaveType = 'regulier' | 'verplicht' | 'gecompenseerd' | 'feestdag' | 'extra_dienst';
 export type LeaveStatus = 'aangevraagd' | 'goedgekeurd' | 'afgekeurd' | 'on_hold';
 
 export interface LeaveRequest {
@@ -133,7 +133,7 @@ export interface LeaveRequest {
   date: string; // YYYY-MM-DD
   slot: LeaveSlot;
   units: number; // 0.5 voor VM of NM, 1.0 voor HELE_DAG
-  type: LeaveType; // 'regulier' | 'verplicht' | 'gecompenseerd' (gecompenseerde werkdag trekt af van teller)
+  type: LeaveType; // 'regulier' | 'verplicht' | 'gecompenseerd' | 'extra_dienst' (extra dienst voor artsen ter goedkeuring)
   status: LeaveStatus; // 'aangevraagd' | 'goedgekeurd' | 'afgekeurd' | 'on_hold'
   note?: string; // Optionele toelichting of planner opmerking
   created_at?: string;

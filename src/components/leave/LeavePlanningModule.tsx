@@ -316,7 +316,36 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       }
     );
 
-    // 5. Fetch backup status
+    // 5. Shift overrides (Extra werkmomenten / gewijzigde diensten)
+    const unsubOverrides = onSnapshot(
+      col('leave_config'),
+      snapshot => {
+        if (!snapshot.empty) {
+          const overrides: Record<string, 'dienst' | 'vrij'> = {};
+          snapshot.forEach(d => {
+            if (d.id.startsWith('override_')) {
+              const key = d.id.replace('override_', '');
+              const data = d.data();
+              if (data?.status === 'dienst' || data?.status === 'vrij') {
+                overrides[key] = data.status;
+              }
+            }
+          });
+          setShiftOverrides(prev => {
+            const merged = { ...prev, ...overrides };
+            try {
+              localStorage.setItem(getEnvStorageKey('derm_shift_overrides_store'), JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
+        }
+      },
+      err => {
+        console.warn('Firestore leave_config overrides listener:', err);
+      }
+    );
+
+    // 6. Fetch backup status
     fetchBackupStatus();
 
     return () => {
@@ -324,6 +353,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       unsubRequests();
       unsubComments();
       unsubTodos();
+      unsubOverrides();
     };
   }, [currentEnv]);
 
@@ -716,6 +746,25 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       status,
       updatedAt: new Date().toISOString()
     }).catch(err => console.warn('Firestore shift override failed, saved locally:', err));
+  };
+
+  const handleClearShiftOverride = async (
+    staffId: string,
+    date: string,
+    slot: 'VM' | 'NM'
+  ) => {
+    const overrideKey = `${staffId}_${date}_${slot.toLowerCase()}`;
+    setShiftOverrides(prev => {
+      const next = { ...prev };
+      delete next[overrideKey];
+      try {
+        localStorage.setItem(getEnvStorageKey('derm_shift_overrides_store'), JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    deleteDoc(docRef('leave_config', `override_${overrideKey}`))
+      .catch(err => console.warn('Firestore delete shift override failed:', err));
   };
 
   // --- Leave Requests (Approvals & Status) ---
@@ -1216,6 +1265,8 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
           onDirectCancelLeave={handleDirectCancelLeave}
           onDirectSwitchLeaveType={handleDirectSwitchLeaveType}
           onUpdateLeaveStatus={handleUpdateLeaveStatus}
+          onDirectSetShiftStatus={handleDirectSetShiftStatus}
+          onClearShiftOverride={handleClearShiftOverride}
         />
       )}
 

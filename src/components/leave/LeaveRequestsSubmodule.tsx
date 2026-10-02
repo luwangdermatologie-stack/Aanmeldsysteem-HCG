@@ -36,7 +36,8 @@ import {
   CalendarCheck,
   AlertTriangle,
   Award,
-  Briefcase
+  Briefcase,
+  UserPlus
 } from 'lucide-react';
 
 interface LeaveRequestsSubmoduleProps {
@@ -678,6 +679,7 @@ export const LeaveRequestsSubmodule: React.FC<LeaveRequestsSubmoduleProps> = ({
                 <option value="regulier">Regulier Verlof</option>
                 <option value="verplicht">Verplicht Verlof</option>
                 <option value="gecompenseerd">Gecompenseerde Werkdag</option>
+                <option value="extra_dienst">Extra Dienst (Arts)</option>
               </select>
             </div>
           </div>
@@ -741,7 +743,12 @@ export const LeaveRequestsSubmodule: React.FC<LeaveRequestsSubmoduleProps> = ({
                         {req.units} dag
                       </td>
                       <td className="p-3">
-                        {req.type === 'gecompenseerd' ? (
+                        {req.type === 'extra_dienst' ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-300 flex items-center gap-1 w-fit">
+                            <UserPlus className="w-3 h-3 text-blue-700" />
+                            Extra Dienst (+{req.units}d)
+                          </span>
+                        ) : req.type === 'gecompenseerd' ? (
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-900 border border-teal-300 flex items-center gap-1 w-fit">
                             <Briefcase className="w-3 h-3 text-teal-700" />
                             Gecompenseerd (-{req.units}d)
