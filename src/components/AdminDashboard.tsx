@@ -1024,7 +1024,7 @@ export default function AdminDashboard({
                   <input
                     id="admin-search-input"
                     type="text"
-                    placeholder="Zoek patiënt op naam of rijksregisternummer..."
+                    placeholder="Zoek patiënt op naam of geboortedatum..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:border-indigo-500"
@@ -1079,8 +1079,7 @@ export default function AdminDashboard({
                       <th className="p-3">Aankomst</th>
                       <th className="p-3">Patiënt Naam</th>
                       <th className="p-3">Geboortedatum</th>
-                      <th className="p-3">Rijksregisternummer</th>
-                      <th className="p-3">ID-Kaartnummer</th>
+                      <th className="p-3 whitespace-nowrap">Nieuwe patiënt</th>
                       <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => toggleSort('appointmentTime')}>
                         Afspraak {sortBy === 'appointmentTime' ? (sortOrder === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
@@ -1092,7 +1091,7 @@ export default function AdminDashboard({
                   <tbody>
                     {filteredPatients.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="text-center p-8 text-slate-400 font-medium">
+                        <td colSpan={8} className="text-center p-8 text-slate-400 font-medium">
                           Geen actieve aanmeldingen gevonden voor de gekozen filters.
                         </td>
                       </tr>
@@ -1110,38 +1109,16 @@ export default function AdminDashboard({
                             <td className="p-3 font-mono text-slate-600 whitespace-nowrap">
                               {formatBirthDate(patient.birthDate)}
                             </td>
-                            <td className="p-3 font-mono text-slate-600 whitespace-nowrap">
-                              {patient.hasForeignNationality ? (
-                                <div className="flex flex-col gap-0.5">
-                                  {patient.nationalRegistryNum && patient.nationalRegistryNum !== '-' ? (
-                                    <span>{formatRegistryNum(patient.nationalRegistryNum)}</span>
-                                  ) : (
-                                    <span className="text-zinc-400 font-sans italic text-[10px]">Geen rijksregister</span>
-                                  )}
-                                  <span className="inline-flex items-center text-[9px] font-sans font-medium px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200/60 w-fit">
-                                    🌍 Buitenlands
-                                  </span>
-                                </div>
-                              ) : patient.unknownIdentification ? (
-                                <div className="flex flex-col gap-0.5">
-                                  {patient.nationalRegistryNum && patient.nationalRegistryNum !== '-' ? (
-                                    <span>{formatRegistryNum(patient.nationalRegistryNum)}</span>
-                                  ) : (
-                                    <span className="text-zinc-400 font-sans italic text-[10px]">Niet gekend</span>
-                                  )}
-                                  <span className="inline-flex items-center text-[9px] font-sans font-medium px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/60 w-fit">
-                                    ❓ ID niet gekend
-                                  </span>
-                                </div>
+                            <td className={`p-3 whitespace-nowrap transition-colors ${patient.isNewPatient ? 'bg-amber-50/70 font-semibold' : ''}`}>
+                              {patient.isNewPatient ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-extrabold bg-amber-400 text-amber-950 border border-amber-500/40 shadow-xs ring-1 ring-amber-400/50">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-amber-950"></span>
+                                  Ja
+                                </span>
                               ) : (
-                                <span>{formatRegistryNum(patient.nationalRegistryNum)}</span>
-                              )}
-                            </td>
-                            <td className="p-3 font-mono text-slate-600 whitespace-nowrap">
-                              {patient.idCardNum && patient.idCardNum !== '-' ? (
-                                <span className="font-mono text-slate-700 font-medium">{patient.idCardNum}</span>
-                              ) : (
-                                <span className="text-zinc-400 font-sans italic text-[11px]">-</span>
+                                <span className="text-slate-400 font-medium text-xs">
+                                  Nee
+                                </span>
                               )}
                             </td>
                             <td className="p-3 font-semibold whitespace-nowrap">

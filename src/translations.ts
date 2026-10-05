@@ -58,6 +58,8 @@ export interface TranslationSet {
   lateWarningText: string;
   teamsNotificationSent: string;
   redirectTimerText: string;
+  newPatientIdCardNoticeTitle: string;
+  newPatientIdCardNotice: string;
 
   // Flow 2 (No Appointment) - Screen 2 Choices
   noApptTitle: string;
@@ -135,6 +137,8 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     lateWarningText: "U bent te laat, een personeelslid komt even met u bekijken of uw afspraak nog kan doorgaan. Eventjes geduld.",
     teamsNotificationSent: "Het artsenteam is op de hoogte gebracht van uw komst.",
     redirectTimerText: "Dit scherm herstart over {seconds} seconden...",
+    newPatientIdCardNoticeTitle: "Identiteitskaart klaarlaten",
+    newPatientIdCardNotice: "Gelieve uw identiteitskaart klaar te houden om te laten inlezen in de consultatieruimte.",
     noApptTitle: "Hoe kunnen we u helpen?",
     noApptSub: "Maak een keuze hieronder om de juiste hulp te ontvangen.",
     optionPatientInfo: "Ik ben een patiënt en wens verdere inlichtingen",
@@ -200,6 +204,8 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     lateWarningText: "You are late. A staff member will shortly check with you if your appointment can still proceed. Please be patient.",
     teamsNotificationSent: "The medical staff has been notified of your arrival.",
     redirectTimerText: "This screen restarts in {seconds} seconds...",
+    newPatientIdCardNoticeTitle: "Keep identity card ready",
+    newPatientIdCardNotice: "Please keep your identity card ready to be scanned in the consultation room.",
     noApptTitle: "How can we help you?",
     noApptSub: "Please select an option below so we can assist you properly.",
     optionPatientInfo: "I am a patient and request further information",
@@ -265,6 +271,8 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     lateWarningText: "Vous êtes en retard. Un membre du personnel viendra voir avec vous si votre rendez-vous peut encore avoir lieu. Veuillez patienter.",
     teamsNotificationSent: "L'équipe médicale a été informée de votre arrivée.",
     redirectTimerText: "Cet écran retournera à l'accueil dans {seconds} secondes...",
+    newPatientIdCardNoticeTitle: "Carte d'identité prête",
+    newPatientIdCardNotice: "Veuillez garder votre carte d'identité prête à être scannée dans la salle de consultation.",
     noApptTitle: "Comment pouvons-nous vous aider ?",
     noApptSub: "Sélectionnez une option ci-dessous afin que nous puissions vous diriger.",
     optionPatientInfo: "Je suis un patient et souhaite des informations complémentaires",
@@ -330,6 +338,8 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     lateWarningText: "Geç kaldınız. Bir personel randevunuzun devam edip edemeyeceğini görüşmek üzere birazdan yanınıza gelecektir. Lütfen bekleyin.",
     teamsNotificationSent: "Doktorunuza varışınızla ilgili bildirim gönderildi.",
     redirectTimerText: "Bu ekran {seconds} saniye içinde ana ekrana dönecektir...",
+    newPatientIdCardNoticeTitle: "Kimlik kartınızı hazırlayınız",
+    newPatientIdCardNotice: "Lütfen kimlik kartınızı muayene odasında okutulmak üzere hazır bulundurunuz.",
     noApptTitle: "Size nasıl yardımcı olabiliriz?",
     noApptSub: "Doğru yardımı alabilmek için lütfen aşağıdaki seçeneklerden birini belirleyin.",
     optionPatientInfo: "Hastayım ve detaylı bilgi almak istiyorum",
@@ -395,6 +405,8 @@ export const translations: Record<LanguageCode, TranslationSet> = {
     lateWarningText: "لقد تأخرت. سيناقش معك أحد الموظفين قريباً ما إذا كان موعدك لا يزال ممكناً. يرجى الانتظار قليلاً.",
     teamsNotificationSent: "تم إخطار الفريق الطبي والأخصائيين بوصولك وفوراً.",
     redirectTimerText: "ستعود هذه الشاشة إلى البداية خلال {seconds} ثوانٍ...",
+    newPatientIdCardNoticeTitle: "يرجى تجهيز بطاقة الهوية",
+    newPatientIdCardNotice: "يرجى إبقاء بطاقة الهوية جاهزة لقراءتها داخل غرفة الاستشارة.",
     noApptTitle: "كيف يمكننا مساعدتك؟",
     noApptSub: "يرجى اختيار أحد الخيارات أدناه لتوجيهك بشكل صحيح.",
     optionPatientInfo: "أنا مريض وأرغب في الحصول على مزيد من المعلومات",

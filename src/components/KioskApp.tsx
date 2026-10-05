@@ -25,6 +25,7 @@ import {
   Minimize2,
   Settings,
   Monitor,
+  CreditCard,
   ZoomIn,
   ZoomOut
 } from 'lucide-react';
@@ -367,15 +368,12 @@ export default function KioskApp({
         { id: 'firstName' as const, label: t.firstNameLabel, isNumeric: false, elId: 'input-kiosk-f1-firstname' },
         { id: 'lastName' as const, label: t.lastNameLabel, isNumeric: false, elId: 'input-kiosk-f1-lastname' },
         { id: 'birthDate' as const, label: t.birthDateLabel, isNumeric: true, elId: 'input-kiosk-f1-birthdate' },
-        { id: 'nationalRegNum' as const, label: t.registryNumLabel, isNumeric: true, elId: 'input-kiosk-f1-regnum' },
-        { id: 'idCardNum' as const, label: t.idCardLabel, isNumeric: true, elId: 'input-kiosk-f1-idcard' },
       ];
     }
     if (currentScreen === 'f2_patient_form') {
       return [
         { id: 'firstName' as const, label: t.firstNameLabel, isNumeric: false, elId: 'input-kiosk-f2-firstname' },
         { id: 'lastName' as const, label: t.lastNameLabel, isNumeric: false, elId: 'input-kiosk-f2-lastname' },
-        { id: 'nationalRegNum' as const, label: t.registryNumLabel, isNumeric: true, elId: 'input-kiosk-f2-regnum' },
       ];
     }
     if (currentScreen === 'help_form') {
@@ -561,39 +559,7 @@ export default function KioskApp({
       return;
     }
 
-    // If patient is a known patient, ID and national registry number are not required
-    if (patientType !== 'known') {
-      const isIdOptional = hasForeignNationality || unknownIdentification;
-      if (!isIdOptional) {
-        if (!nationalRegNum.trim()) {
-          playTone('warn');
-          setFormError(t.requiredFieldsError);
-          return;
-        }
-        const cleanReg = nationalRegNum.replace(/\D/g, '');
-        if (cleanReg.length !== 11) {
-          playTone('warn');
-          setFormError(t.invalidRegistryNumError);
-          return;
-        }
-        if (!idCardNum.trim()) {
-          playTone('warn');
-          setFormError(t.requiredIdCardError);
-          return;
-        }
-      } else {
-        // If optional and a registry number was entered, validate only if unknownIdentification is false
-        if (nationalRegNum.trim() && !unknownIdentification) {
-          const cleanReg = nationalRegNum.replace(/\D/g, '');
-          if (cleanReg.length > 0 && cleanReg.length !== 11) {
-            playTone('warn');
-            setFormError(t.invalidRegistryNumError);
-            return;
-          }
-        }
-      }
-    }
-
+    // Neither known nor new patients require national registry or ID card number
     setFormError('');
 
     // Pre-initialize appointmentTime with a rounded upcoming slot if not set
@@ -664,16 +630,12 @@ export default function KioskApp({
       playTone('success');
     }
 
-    const isIdOptional = (patientType === 'known') || hasForeignNationality || unknownIdentification;
     // Register Patient
     onPatientRegister({
-      firstName,
-      lastName,
-      birthDate,
-      nationalRegistryNum: isIdOptional ? (nationalRegNum.trim() || '-') : nationalRegNum,
-      idCardNum: isIdOptional ? (idCardNum.trim() || undefined) : idCardNum,
-      hasForeignNationality,
-      unknownIdentification,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      birthDate: birthDate.trim(),
+      isNewPatient: patientType === 'new',
       appointmentTime,
       doctorId: doctor.id,
       doctorName: doctor.name,
@@ -690,7 +652,7 @@ export default function KioskApp({
         Type: "Te late patiënt",
         Tijdstip: appointmentTime,
         Geboortedatum: birthDate,
-        "Rijksregisternummer": nationalRegNum.trim() ? nationalRegNum : (patientType === 'known' ? 'Gekende patiënt' : 'Niet gekend'),
+        "Nieuwe patiënt": patientType === 'new' ? 'Ja' : 'Nee',
         "Status": "⚠️ TE LAAT (ROOD/VET/OPVALLEND)",
         "Wachtzaal": assignedRoom === 'Gelijkvloers' ? 'Gelijkvloers (G)' : 'Bovenverdieping (B)'
       });
@@ -745,46 +707,15 @@ export default function KioskApp({
       return;
     }
 
-    // Unless the patient indicates foreign nationality or unknown identification,
-    // Rijksregisternummer is strictly required.
-    const isIdOptional = hasForeignNationality || unknownIdentification;
-    if (!isIdOptional) {
-      if (!nationalRegNum.trim()) {
-        playTone('warn');
-        setFormError(t.requiredFieldsError);
-        return;
-      }
-      const cleanReg = nationalRegNum.replace(/\D/g, '');
-      if (cleanReg.length !== 11) {
-        playTone('warn');
-        setFormError(t.invalidRegistryNumError);
-        return;
-      }
-    } else {
-      if (nationalRegNum.trim() && !unknownIdentification) {
-        const cleanReg = nationalRegNum.replace(/\D/g, '');
-        if (cleanReg.length > 0 && cleanReg.length !== 11) {
-          playTone('warn');
-          setFormError(t.invalidRegistryNumError);
-          return;
-        }
-      }
-    }
-
     setFormError('');
     playTone('success');
 
-    const finalRegistryNum = isIdOptional ? (nationalRegNum.trim() || '-') : nationalRegNum;
-
     // Register Patient info
     onPatientRegister({
-      firstName,
-      lastName,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
       birthDate: '-',
-      nationalRegistryNum: finalRegistryNum,
-      idCardNum: isIdOptional ? (idCardNum.trim() || '') : (idCardNum.trim() || ''),
-      hasForeignNationality,
-      unknownIdentification,
+      isNewPatient: true,
       appointmentTime: undefined,
       doctorId: undefined,
       doctorName: undefined,
@@ -793,11 +724,10 @@ export default function KioskApp({
     });
 
     // Send Simulated Teams notification to active support staff member
-    const message = `👤 **Aanvraag Baliehulp**: Patiënt zonder afspraak **${firstName} ${lastName}** (Rijksregisternr: ${finalRegistryNum}) vraagt om verdere inlichtingen bij de ontvangstkiosk. Gelieve deze persoon te assisteren.`;
+    const message = `👤 **Aanvraag Baliehulp**: Patiënt zonder afspraak **${firstName} ${lastName}** vraagt om verdere inlichtingen bij de ontvangstkiosk. Gelieve deze persoon te assisteren.`;
     onTeamsNotify(message, 'Ondersteunende Medewerker', {
       type: 'patient_info',
       patientName: `${firstName} ${lastName}`,
-      nationalRegistryNum: finalRegistryNum,
       time: new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })
     });
 
@@ -995,7 +925,14 @@ export default function KioskApp({
                 </div>
               )}
 
-              <form onSubmit={submitF1Details} className="grid grid-cols-2 gap-4 apple-glass-card p-6 sm:p-7 rounded-3xl border border-white/80 shadow-md">
+              {patientType === 'new' && (
+                <div className="mb-4 p-4 rounded-2xl bg-blue-500/10 text-blue-900 text-sm sm:text-base flex items-center gap-3 border border-blue-500/20 backdrop-blur-xs">
+                  <UserPlus className="h-6 w-6 shrink-0 text-[#0071E3]" />
+                  <span className="font-semibold">Nieuwe patiënt: vul uw naam en geboortedatum in ter verificatie.</span>
+                </div>
+              )}
+
+              <form onSubmit={submitF1Details} className="grid grid-cols-1 sm:grid-cols-2 gap-4 apple-glass-card p-6 sm:p-7 rounded-3xl border border-white/80 shadow-md">
                 <div className="flex flex-col">
                   <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">{t.firstNameLabel} *</label>
                   <input
@@ -1026,7 +963,7 @@ export default function KioskApp({
                   />
                 </div>
 
-                <div className={`flex flex-col ${patientType === 'known' ? 'col-span-2 sm:col-span-1' : ''}`}>
+                <div className="flex flex-col col-span-1 sm:col-span-2">
                   <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">{t.birthDateLabel} *</label>
                   <input
                     id="input-kiosk-f1-birthdate"
@@ -1041,111 +978,6 @@ export default function KioskApp({
                     required
                   />
                 </div>
-
-                {/* Only display ID Card and National Registry fields for NEW patients */}
-                {patientType !== 'known' && (
-                  <>
-                    {/* Keuzeknoppen voor Identificatie / Nationaliteit */}
-                    <div className="col-span-2 flex flex-col gap-3 my-1">
-                      {/* Geen Belgische Nationaliteit Toggle */}
-                      <div 
-                        onClick={() => {
-                          setHasForeignNationality(!hasForeignNationality);
-                          setFormError('');
-                        }}
-                        className={`p-3.5 sm:p-4 rounded-2xl border flex items-start gap-3 cursor-pointer transition select-none ${
-                          hasForeignNationality 
-                            ? 'bg-blue-500/10 border-[#0071E3]/50 shadow-xs' 
-                            : 'bg-blue-500/5 border-blue-500/20 hover:bg-blue-500/10'
-                        }`}
-                      >
-                        <input
-                          id="checkbox-kiosk-f1-non-belgian"
-                          type="checkbox"
-                          checked={hasForeignNationality}
-                          onChange={(e) => {
-                            setHasForeignNationality(e.target.checked);
-                            setFormError('');
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          className="mt-1 h-5 w-5 rounded border-slate-300 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer shrink-0"
-                        />
-                        <label htmlFor="checkbox-kiosk-f1-non-belgian" className="text-sm sm:text-base text-slate-700 cursor-pointer select-none">
-                          <span className="font-bold text-slate-900 block">{t.nonBelgianNationalityCheckbox}</span>
-                          <span className="text-slate-500 block text-xs sm:text-sm mt-0.5">{t.nonBelgianNationalityHint}</span>
-                        </label>
-                      </div>
-
-                      {/* Rijksregisternummer / ID niet gekend Toggle */}
-                      <div 
-                        onClick={() => {
-                          setUnknownIdentification(!unknownIdentification);
-                          setFormError('');
-                        }}
-                        className={`p-3.5 sm:p-4 rounded-2xl border flex items-start gap-3 cursor-pointer transition select-none ${
-                          unknownIdentification 
-                            ? 'bg-blue-500/10 border-[#0071E3]/50 shadow-xs' 
-                            : 'bg-blue-500/5 border-blue-500/20 hover:bg-blue-500/10'
-                        }`}
-                      >
-                        <input
-                          id="checkbox-kiosk-f1-unknown-id"
-                          type="checkbox"
-                          checked={unknownIdentification}
-                          onChange={(e) => {
-                            setUnknownIdentification(e.target.checked);
-                            setFormError('');
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          className="mt-1 h-5 w-5 rounded border-slate-300 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer shrink-0"
-                        />
-                        <label htmlFor="checkbox-kiosk-f1-unknown-id" className="text-sm sm:text-base text-slate-700 cursor-pointer select-none">
-                          <span className="font-bold text-slate-900 block">{t.unknownIdCheckbox}</span>
-                          <span className="text-slate-500 block text-xs sm:text-sm mt-0.5">{t.unknownIdHint}</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col">
-                      <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">
-                        {t.registryNumLabel} {!(hasForeignNationality || unknownIdentification) && '*'}
-                      </label>
-                      <input
-                        id="input-kiosk-f1-regnum"
-                        type="text"
-                        value={nationalRegNum}
-                        onChange={(e) => handleNationalRegNumChange(e.target.value)}
-                        onFocus={() => handleInputFocus('nationalRegNum', 'Rijksregisternummer (YY.MM.DD-XXX.CC)', true)}
-                        onClick={() => handleInputFocus('nationalRegNum', 'Rijksregisternummer (YY.MM.DD-XXX.CC)', true)}
-                        maxLength={15}
-                        placeholder={(hasForeignNationality || unknownIdentification) ? "Optioneel (bv. 85.08.14-123.45)" : "bijv. 85.08.14-123.45"}
-                        className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input scroll-mt-16 font-medium shadow-2xs"
-                        required={!(hasForeignNationality || unknownIdentification)}
-                      />
-                    </div>
-
-                    <div className="flex flex-col">
-                      <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">
-                        {t.idCardLabel} {!(hasForeignNationality || unknownIdentification) && '*'}
-                        {(hasForeignNationality || unknownIdentification) && (
-                          <span className="text-xs text-slate-400 font-normal ml-1">(Optioneel)</span>
-                        )}
-                      </label>
-                      <input
-                        id="input-kiosk-f1-idcard"
-                        type="text"
-                        maxLength={14}
-                        placeholder={(hasForeignNationality || unknownIdentification) ? "Optioneel (bv. 592-1234567-89)" : "bijv. 592-1234567-89"}
-                        value={idCardNum}
-                        onChange={(e) => handleIdCardNumChange(e.target.value)}
-                        onFocus={() => handleInputFocus('idCardNum', 'Identiteitskaartnummer', true)}
-                        onClick={() => handleInputFocus('idCardNum', 'Identiteitskaartnummer', true)}
-                        className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input scroll-mt-16 font-medium shadow-2xs"
-                        required={!(hasForeignNationality || unknownIdentification)}
-                      />
-                    </div>
-                  </>
-                )}
               </form>
             </div>
 
@@ -1306,6 +1138,24 @@ export default function KioskApp({
               </span>
             </div>
 
+            {/* Extra instructie voor nieuwe patiënten: identiteitskaart klaarhouden voor inlezen in consultatieruimte */}
+            {patientType === 'new' && (
+              <div className="mx-auto max-w-[540px] p-4 sm:p-5 rounded-2xl bg-amber-50/95 text-amber-950 border-2 border-amber-300 shadow-md mb-6 flex items-center gap-3.5 text-start animate-fade-in ring-2 ring-amber-400/20">
+                <div className="h-11 w-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <CreditCard className="h-6 w-6 stroke-[2.2]" />
+                </div>
+                <div>
+                  <div className="font-extrabold text-sm sm:text-base text-amber-950 flex items-center gap-1.5">
+                    <span>{t.newPatientIdCardNoticeTitle || "Identiteitskaart klaarlaten"}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">Belangrijk</span>
+                  </div>
+                  <div className="text-xs sm:text-sm text-amber-900/90 font-medium mt-1 leading-snug">
+                    {t.newPatientIdCardNotice || "Gelieve uw identiteitskaart klaar te houden om te laten inlezen in de consultatieruimte."}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {isPatientLate && (
               <div className="mx-auto max-w-md p-4 rounded-2xl bg-amber-500/10 text-amber-800 text-sm sm:text-base flex items-center gap-3 border border-amber-500/20 mb-6 backdrop-blur-xs">
                 <AlertTriangle className="h-6 w-6 shrink-0 text-amber-600" />
@@ -1390,68 +1240,7 @@ export default function KioskApp({
                 </div>
               )}
 
-              <form onSubmit={submitF2PatientForm} className="grid grid-cols-2 gap-4 apple-glass-card p-6 sm:p-7 rounded-3xl border border-white/80 shadow-md">
-                {/* Keuzeknoppen voor Identificatie / Nationaliteit */}
-                <div className="col-span-2 flex flex-col gap-3 my-1">
-                  {/* Geen Belgische Nationaliteit Toggle */}
-                  <div 
-                    onClick={() => {
-                      setHasForeignNationality(!hasForeignNationality);
-                      setFormError('');
-                    }}
-                    className={`p-3.5 sm:p-4 rounded-2xl border flex items-start gap-3 cursor-pointer transition select-none ${
-                      hasForeignNationality 
-                        ? 'bg-blue-500/10 border-[#0071E3]/50 shadow-xs' 
-                        : 'bg-blue-500/5 border-blue-500/20 hover:bg-blue-500/10'
-                    }`}
-                  >
-                    <input
-                      id="checkbox-kiosk-f2-non-belgian"
-                      type="checkbox"
-                      checked={hasForeignNationality}
-                      onChange={(e) => {
-                        setHasForeignNationality(e.target.checked);
-                        setFormError('');
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="mt-1 h-5 w-5 rounded border-slate-300 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer shrink-0"
-                    />
-                    <label htmlFor="checkbox-kiosk-f2-non-belgian" className="text-sm sm:text-base text-slate-700 cursor-pointer select-none">
-                      <span className="font-bold text-slate-900 block">{t.nonBelgianNationalityCheckbox}</span>
-                      <span className="text-xs sm:text-sm text-slate-500 block mt-0.5">{t.nonBelgianNationalityHint}</span>
-                    </label>
-                  </div>
-
-                  {/* Rijksregisternummer / ID niet gekend Toggle */}
-                  <div 
-                    onClick={() => {
-                      setUnknownIdentification(!unknownIdentification);
-                      setFormError('');
-                    }}
-                    className={`p-3.5 sm:p-4 rounded-2xl border flex items-start gap-3 cursor-pointer transition select-none ${
-                      unknownIdentification 
-                        ? 'bg-blue-500/10 border-[#0071E3]/50 shadow-xs' 
-                        : 'bg-blue-500/5 border-blue-500/20 hover:bg-blue-500/10'
-                    }`}
-                  >
-                    <input
-                      id="checkbox-kiosk-f2-unknown-id"
-                      type="checkbox"
-                      checked={unknownIdentification}
-                      onChange={(e) => {
-                        setUnknownIdentification(e.target.checked);
-                        setFormError('');
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="mt-1 h-5 w-5 rounded border-slate-300 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer shrink-0"
-                    />
-                    <label htmlFor="checkbox-kiosk-f2-unknown-id" className="text-sm sm:text-base text-slate-700 cursor-pointer select-none">
-                      <span className="font-bold text-slate-900 block">{t.unknownIdCheckbox}</span>
-                      <span className="text-xs sm:text-sm text-slate-500 block mt-0.5">{t.unknownIdHint}</span>
-                    </label>
-                  </div>
-                </div>
-
+              <form onSubmit={submitF2PatientForm} className="grid grid-cols-1 sm:grid-cols-2 gap-4 apple-glass-card p-6 sm:p-7 rounded-3xl border border-white/80 shadow-md">
                 <div className="flex flex-col">
                   <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">{t.firstNameLabel} *</label>
                   <input
@@ -1479,27 +1268,6 @@ export default function KioskApp({
                     placeholder="Achternaam"
                     className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input scroll-mt-16 font-medium shadow-2xs"
                     required
-                  />
-                </div>
-
-                <div className="flex flex-col col-span-2">
-                  <label className="text-sm sm:text-base font-bold text-slate-800 mb-1.5">
-                    {t.registryNumLabel} {!(hasForeignNationality || unknownIdentification) && '*'}
-                    <span className="text-xs sm:text-sm text-slate-400 font-normal ml-2">
-                      {(hasForeignNationality || unknownIdentification) ? '(Optioneel)' : 'Ter identificatie bij de balie'}
-                    </span>
-                  </label>
-                  <input
-                    id="input-kiosk-f2-regnum"
-                    type="text"
-                    value={nationalRegNum}
-                    onChange={(e) => handleNationalRegNumChange(e.target.value)}
-                    onFocus={() => handleInputFocus('nationalRegNum', 'Rijksregisternummer (YY.MM.DD-XXX.CC)', true)}
-                    onClick={() => handleInputFocus('nationalRegNum', 'Rijksregisternummer (YY.MM.DD-XXX.CC)', true)}
-                    maxLength={15}
-                    placeholder={(hasForeignNationality || unknownIdentification) ? "Optioneel (bv. 85.08.14-123.45)" : "Rijksregisternummer (bijv. 85.08.14-123.45)"}
-                    className="p-3.5 sm:p-4 text-base sm:text-lg rounded-2xl apple-glass-input scroll-mt-16 font-medium shadow-2xs"
-                    required={!(hasForeignNationality || unknownIdentification)}
                   />
                 </div>
               </form>
@@ -1537,9 +1305,27 @@ export default function KioskApp({
               {t.noApptSuccessTitle}
             </h2>
             
-            <p className="text-slate-600 text-base sm:text-lg leading-relaxed max-w-lg mx-auto mb-8">
+            <p className="text-slate-600 text-base sm:text-lg leading-relaxed max-w-lg mx-auto mb-6">
               {firstName === 'Bezoeker/Leverancier' ? t.nonPatientSuccessMsg : t.noApptSuccessMsg}
             </p>
+
+            {/* Extra instructie voor patiënten: identiteitskaart klaarlaten */}
+            {firstName !== 'Bezoeker/Leverancier' && (
+              <div className="mx-auto max-w-[540px] p-4 sm:p-5 rounded-2xl bg-amber-50/95 text-amber-950 border-2 border-amber-300 shadow-md mb-6 flex items-center gap-3.5 text-start animate-fade-in ring-2 ring-amber-400/20">
+                <div className="h-11 w-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <CreditCard className="h-6 w-6 stroke-[2.2]" />
+                </div>
+                <div>
+                  <div className="font-extrabold text-sm sm:text-base text-amber-950 flex items-center gap-1.5">
+                    <span>{t.newPatientIdCardNoticeTitle || "Identiteitskaart klaarlaten"}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">Belangrijk</span>
+                  </div>
+                  <div className="text-xs sm:text-sm text-amber-900/90 font-medium mt-1 leading-snug">
+                    {t.newPatientIdCardNotice || "Gelieve uw identiteitskaart klaar te houden om te laten inlezen in de consultatieruimte."}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="text-sm sm:text-base text-slate-500">
               <p>{t.redirectTimerText.replace('{seconds}', countdown.toString())}</p>

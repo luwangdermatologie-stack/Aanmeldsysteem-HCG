@@ -765,12 +765,12 @@ export default function App() {
     const mockApptHour = now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' });
     const mockReg = `${Math.floor(Math.random() * 25 + 75)}.06.14-${Math.floor(Math.random() * 800 + 100)}.${Math.floor(Math.random() * 80 + 10)}`;
 
+    const isNew = Math.random() > 0.4;
     handlePatientRegister({
       firstName: randomFirst,
       lastName: randomLast,
       birthDate: '15/06/1988',
-      nationalRegistryNum: mockReg,
-      idCardNum: `592-${Math.floor(Math.random() * 8999999 + 1000000)}-${Math.floor(Math.random() * 89 + 10)}`,
+      isNewPatient: isNew,
       appointmentTime: mockApptHour,
       doctorId: randomDr.id,
       doctorName: randomDr.name,

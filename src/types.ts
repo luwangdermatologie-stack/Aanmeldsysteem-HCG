@@ -10,10 +10,11 @@ export interface Patient {
   firstName: string;
   lastName: string;
   birthDate: string;
-  nationalRegistryNum: string; // Rijksregisternummer
-  idCardNum?: string; // Identity card number
+  nationalRegistryNum?: string; // Rijksregisternummer (niet meer vereist)
+  idCardNum?: string; // Identity card number (niet meer vereist)
   hasForeignNationality?: boolean; // Geen Belgische nationaliteit / buitenlandse patiënt
   unknownIdentification?: boolean; // Rijksregister en/of ID niet gekend
+  isNewPatient?: boolean; // Nieuwe patiënt (Ja/Nee)
   appointmentTime?: string; // E.g., "14:30"
   doctorId?: string;
   doctorName?: string;
