@@ -17,7 +17,9 @@ import {
   getStaffColorConfig,
   validateLeaveRequest,
   formatBelgianDate,
-  MonthCalendarWeek
+  MonthCalendarWeek,
+  findMatchingStaff,
+  isLeaveRequestForStaff
 } from '../../services/leaveService';
 import {
   ChevronLeft,
@@ -121,11 +123,11 @@ export const MonthOverviewSubmodule: React.FC<MonthOverviewSubmoduleProps> = ({
     leaveRequests.forEach(req => {
       if (req.status === 'afgekeurd') return;
 
-      const staff = staffList.find(s => s.id === req.staff_id);
+      const staff = findMatchingStaff(staffList, req.staff_id, req.staff_name);
       if (!staff) return;
 
       if (selectedRoleFilter !== 'all' && staff.role !== selectedRoleFilter) return;
-      if (selectedStaffId !== 'all' && req.staff_id !== selectedStaffId) return;
+      if (selectedStaffId !== 'all' && staff.id !== selectedStaffId) return;
 
       const existing = map.get(req.date) || [];
       existing.push(req);
@@ -189,7 +191,7 @@ export const MonthOverviewSubmodule: React.FC<MonthOverviewSubmoduleProps> = ({
 
         week.days.forEach((day, dayIndex) => {
           const dayLeaves = leavesByDate.get(day.dateStr) || [];
-          const staffLeaves = dayLeaves.filter(l => l.staff_id === staff.id);
+          const staffLeaves = dayLeaves.filter(l => isLeaveRequestForStaff(l, staff));
 
           staffLeaves.forEach(req => {
             if (req.slot === 'VM' || req.slot === 'HELE_DAG') {

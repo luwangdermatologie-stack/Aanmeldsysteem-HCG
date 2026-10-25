@@ -68,7 +68,7 @@ export interface LeaveApprovalSubmoduleProps {
   onUpdateStatus: (requestId: string, status: LeaveStatus, note?: string) => Promise<void>;
   onUpdateNote?: (requestId: string, note: string) => Promise<void>;
   onDeleteRequest: (requestId: string) => Promise<void>;
-  onBatchApproveAllPending?: () => Promise<void>;
+  onBatchApproveAllPending?: (requestIds?: string[]) => Promise<void>;
 }
 
 interface ActiveApprovalModalState {
@@ -270,13 +270,15 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
       : (staff.schedule?.[dayKey]?.[slot] ?? false);
 
     // Look for leave request on this date and slot
-    let req = leaveRequests.find(r => {
+    const matchingReqs = leaveRequests.filter(r => {
       if (!isLeaveRequestForStaff(r, staff) || r.date !== dateStr) return false;
       const rSlot = (r.slot || '').toUpperCase();
-      if (rSlot === 'HELE_DAG') return true;
-      if (slot.toUpperCase() === rSlot) return true;
-      return false;
+      return rSlot === 'HELE_DAG' || rSlot === slot.toUpperCase();
     });
+
+    let req = matchingReqs.find(r => (r.slot || '').toUpperCase() === slot.toUpperCase())
+      || matchingReqs.find(r => (r.slot || '').toUpperCase() === 'HELE_DAG')
+      || matchingReqs[0];
 
     // Check for Belgian statutory holiday
     const holidayName = getBelgianHoliday(dateStr);
@@ -563,8 +565,12 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
       return;
     }
 
-    for (const req of weekPendingRequests) {
-      await onUpdateStatus(req.id, 'goedgekeurd');
+    if (onBatchApproveAllPending) {
+      await onBatchApproveAllPending(weekPendingRequests.map(r => r.id));
+    } else {
+      for (const req of weekPendingRequests) {
+        await onUpdateStatus(req.id, 'goedgekeurd');
+      }
     }
   };
 
@@ -1478,7 +1484,11 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
             {onBatchApproveAllPending && pendingCount > 0 && (
               <button
                 type="button"
-                onClick={onBatchApproveAllPending}
+                onClick={() => {
+                  const pendingFiltered = filteredQueueRequests.filter(r => r.status === 'aangevraagd');
+                  const targetIds = pendingFiltered.length > 0 ? pendingFiltered.map(r => r.id) : undefined;
+                  onBatchApproveAllPending(targetIds);
+                }}
                 className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 shadow-xs"
               >
                 <CheckCheck className="w-3.5 h-3.5" />
@@ -1554,7 +1564,7 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                                 : r.type === 'gecompenseerd'
                                 ? 'bg-teal-50 text-teal-800 border border-teal-300'
                                 : r.type === 'extra_dienst'
-                                ? 'bg-blue-50 text-blue-900 border border-blue-300'
+                                ? 'bg-emerald-100 text-emerald-950 border border-emerald-400 font-extrabold shadow-2xs'
                                 : r.type === 'verplicht'
                                 ? 'bg-amber-50 text-amber-800 border border-amber-200'
                                 : 'bg-blue-50 text-blue-800 border border-blue-200'
@@ -2245,7 +2255,7 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
           }. Klik op ✓ om direct goed te keuren, ✕ om af te keuren, of klik op het vakje voor alle opties.`}
           className={`w-full min-h-[44px] rounded-lg p-1 flex flex-col items-center justify-between transition cursor-pointer shadow-2xs group relative border-2 border-dashed ${
             isExtraShift
-              ? 'bg-blue-50 hover:bg-blue-100/90 border-blue-400 text-blue-950'
+              ? 'bg-emerald-50/90 hover:bg-emerald-100/90 border-emerald-500 text-emerald-950'
               : isCompensated
               ? 'bg-teal-50 hover:bg-teal-100/90 border-teal-500 text-teal-950'
               : isCompulsory
@@ -2255,9 +2265,9 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
         >
           <div className="flex items-center justify-between w-full px-0.5">
             <span className="text-[9px] font-black leading-none truncate">
-              {isExtraShift ? 'Extra Dienst' : isCompensated ? 'Gecomp.' : isCompulsory ? 'Verpl.' : 'Verlof'}
+              {isExtraShift ? '+ Dienst' : isCompensated ? 'Gecomp.' : isCompulsory ? 'Verpl.' : 'Verlof'}
             </span>
-            <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0 animate-pulse" />
+            <Clock className={`w-2.5 h-2.5 ${isExtraShift ? 'text-emerald-700' : 'text-amber-600'} shrink-0 animate-pulse`} />
           </div>
 
           {/* Rechtstreeks Goedkeuren / Afkeuren buttons */}
@@ -2346,9 +2356,9 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
               ? 'Verplicht verlof'
               : 'Regulier verlof'
           }. Klik om details te zien of status aan te passen.`}
-          className={`w-full min-h-[44px] rounded-lg p-1 flex flex-col items-center justify-center transition cursor-pointer shadow-2xs group relative border ${
+          className={`w-full min-h-[44px] rounded-lg p-1 flex flex-col items-center justify-center transition cursor-pointer shadow-xs group relative border ${
             isExtraShift
-              ? 'bg-blue-100 hover:bg-blue-200/90 border-blue-400 text-blue-950'
+              ? 'bg-emerald-100 hover:bg-emerald-200/90 border-2 border-emerald-500 text-emerald-950 ring-1 ring-emerald-400/40'
               : isCompensated
               ? 'bg-teal-100 hover:bg-teal-200/90 border-teal-400 text-teal-950'
               : isCompulsory
@@ -2358,7 +2368,7 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
         >
           <div className="flex items-center gap-1">
             {isExtraShift ? (
-              <UserPlus className="w-3 h-3 text-blue-700" />
+              <UserPlus className="w-3.5 h-3.5 text-emerald-700 stroke-[2.5]" />
             ) : isCompensated ? (
               <Briefcase className="w-3 h-3 text-teal-700" />
             ) : isCompulsory ? (
@@ -2366,9 +2376,11 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
             ) : (
               <ShieldCheck className="w-3 h-3 text-indigo-700" />
             )}
-            <Check className="w-2.5 h-2.5 text-emerald-600 stroke-[3]" />
+            <Check className="w-2.5 h-2.5 text-emerald-800 stroke-[3]" />
           </div>
-          <span className="text-[9px] font-extrabold leading-none mt-0.5">
+          <span className={`text-[9px] leading-none mt-0.5 ${
+            isExtraShift ? 'text-emerald-950 font-black' : 'font-extrabold'
+          }`}>
             {isExtraShift ? '+ Dienst' : isCompensated ? 'Gecomp.' : isCompulsory ? 'Verpl.' : 'Verlof'}
           </span>
 
@@ -2420,15 +2432,34 @@ const ApprovalScheduleSlotCell: React.FC<ApprovalScheduleSlotCellProps> = ({
 
   // Case 2: Dienst (Aanwezig) - Identiek aan Weekoverzicht
   if (isScheduled) {
+    const isOverriddenShift = Boolean(status.isOverridden);
     return (
       <button
         type="button"
         onClick={onClick}
-        title="Dienst (Aanwezig). Klik om direct verlof toe te kennen, notitie of to-do te plaatsen."
-        className="w-full min-h-[44px] rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300/80 text-emerald-800 flex flex-col items-center justify-center transition cursor-pointer group hover:shadow-2xs p-1"
+        title={
+          isOverriddenShift
+            ? "Extra ingeboekt werkmoment (Arts aanwezig). Klik om aan te passen of te annuleren."
+            : "Dienst (Aanwezig). Klik om direct verlof toe te kennen, notitie of to-do te plaatsen."
+        }
+        className={`w-full min-h-[44px] rounded-lg flex flex-col items-center justify-center transition cursor-pointer group hover:shadow-xs p-1 border ${
+          isOverriddenShift
+            ? 'bg-emerald-100 hover:bg-emerald-200/90 border-2 border-emerald-500 text-emerald-950 font-black shadow-xs ring-1 ring-emerald-400/40'
+            : 'bg-emerald-50 hover:bg-emerald-100 border border-emerald-300/80 text-emerald-800'
+        }`}
       >
-        <Check className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
-        <span className="text-[9px] font-extrabold leading-none mt-0.5 text-emerald-700">Dienst</span>
+        <div className="flex items-center gap-1">
+          {isOverriddenShift ? (
+            <UserPlus className="w-3.5 h-3.5 text-emerald-700 stroke-[2.5] group-hover:scale-110 transition-transform" />
+          ) : (
+            <Check className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+          )}
+        </div>
+        <span className={`text-[9px] leading-none mt-0.5 ${
+          isOverriddenShift ? 'text-emerald-950 font-black' : 'text-emerald-700 font-extrabold'
+        }`}>
+          {isOverriddenShift ? '+ Dienst' : 'Dienst'}
+        </span>
       </button>
     );
   }

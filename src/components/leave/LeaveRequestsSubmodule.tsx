@@ -744,8 +744,8 @@ export const LeaveRequestsSubmodule: React.FC<LeaveRequestsSubmoduleProps> = ({
                       </td>
                       <td className="p-3">
                         {req.type === 'extra_dienst' ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-300 flex items-center gap-1 w-fit">
-                            <UserPlus className="w-3 h-3 text-blue-700" />
+                          <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-100 text-emerald-950 border border-emerald-400 flex items-center gap-1 w-fit shadow-2xs">
+                            <UserPlus className="w-3 h-3 text-emerald-700 stroke-[2.5]" />
                             Extra Dienst (+{req.units}d)
                           </span>
                         ) : req.type === 'gecompenseerd' ? (

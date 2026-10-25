@@ -224,14 +224,16 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
       : (staff.schedule?.[dayKey]?.[slot] ?? false);
 
     // Check for active leave request on this date
-    let req = leaveRequests.find(r => {
+    const matchingReqs = leaveRequests.filter(r => {
       if (!isLeaveRequestForStaff(r, staff) || r.date !== dateStr) return false;
       if (r.status === 'afgekeurd') return false; // Rejected leave does not count
       const rSlot = (r.slot || '').toUpperCase();
-      if (rSlot === 'HELE_DAG') return true;
-      if (slot.toUpperCase() === rSlot) return true;
-      return false;
+      return rSlot === 'HELE_DAG' || rSlot === slot.toUpperCase();
     });
+
+    let req = matchingReqs.find(r => (r.slot || '').toUpperCase() === slot.toUpperCase())
+      || matchingReqs.find(r => (r.slot || '').toUpperCase() === 'HELE_DAG')
+      || matchingReqs[0];
 
     // Check if this date is an official Belgian statutory public holiday
     const holidayName = getBelgianHoliday(dateStr);
@@ -1096,7 +1098,7 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                       activeQuickSlot.currentLeave.type === 'feestdag'
                         ? 'bg-rose-100 text-rose-950 border-rose-300'
                         : activeQuickSlot.currentLeave.type === 'extra_dienst'
-                        ? 'bg-blue-100 text-blue-950 border-blue-300'
+                        ? 'bg-emerald-100 text-emerald-950 border-emerald-400 font-extrabold shadow-2xs'
                         : activeQuickSlot.currentLeave.type === 'gecompenseerd'
                         ? 'bg-teal-100 text-teal-950 border-teal-300'
                         : activeQuickSlot.currentLeave.type === 'verplicht'
@@ -1134,8 +1136,8 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                     <span>{activeQuickSlot.isOverridden ? 'Extra Werkmoment (Ingeboekt)' : 'Dienst (Ingeroosterd & Aanwezig)'}</span>
                   </div>
                   {activeQuickSlot.isOverridden && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                      Extra Dienst
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-extrabold bg-emerald-100 text-emerald-950 border border-emerald-400 shadow-2xs">
+                      + Extra Dienst
                     </span>
                   )}
                 </div>
@@ -1512,16 +1514,16 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                 <div className="space-y-3">
                   {/* EXTRA WERKMOMENT AANVRAGEN BIJ ARTSEN */}
                   {activeQuickSlot.staff.role === 'arts' && (
-                    <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-2 shadow-xs">
+                    <div className="p-3 bg-emerald-50/90 border-2 border-emerald-300/90 rounded-2xl space-y-2 shadow-xs">
                       <div className="flex items-center gap-2 mb-0.5">
-                        <div className="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                          <UserPlus className="w-3.5 h-3.5" />
+                        <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                          <UserPlus className="w-3.5 h-3.5 stroke-[2.5]" />
                         </div>
                         <div>
-                          <span className="text-xs font-black text-blue-950 block">
+                          <span className="text-xs font-black text-emerald-950 block">
                             Extra dienst aanvragen bij arts
                           </span>
-                          <span className="text-[10px] text-blue-800 font-medium">
+                          <span className="text-[10px] text-emerald-800 font-medium">
                             Dient ter goedkeuring in het tabblad 'Verlof Goedkeuren'
                           </span>
                         </div>
@@ -1531,22 +1533,22 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                       <button
                         type="button"
                         onClick={() => handleApplyExtraShift(activeQuickSlot.slot)}
-                        className="w-full p-2.5 rounded-xl bg-blue-50/90 hover:bg-blue-100 border border-blue-200 hover:border-blue-400 text-blue-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
+                        className="w-full p-2.5 rounded-xl bg-emerald-100/70 hover:bg-emerald-100 border border-emerald-300 hover:border-emerald-500 text-emerald-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
-                            <UserPlus className="w-4 h-4" />
+                          <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+                            <UserPlus className="w-4 h-4 stroke-[2.5]" />
                           </div>
                           <div className="text-left">
-                            <span className="font-extrabold text-xs block text-blue-950 group-hover:text-blue-900">
+                            <span className="font-extrabold text-xs block text-emerald-950 group-hover:text-emerald-900">
                               Extra dienst aanvragen (Halve dag · {activeQuickSlot.slot === 'VM' ? 'Voormiddag' : 'Namiddag'} · 0.5 dag)
                             </span>
-                            <span className="text-[11px] text-blue-700/80 font-medium block">
+                            <span className="text-[11px] text-emerald-800/80 font-medium block">
                               Dient ter goedkeuring in het tabblad 'Verlof Goedkeuren'
                             </span>
                           </div>
                         </div>
-                        <span className="text-xs font-bold text-blue-600 group-hover:translate-x-0.5 transition-transform shrink-0">
+                        <span className="text-xs font-bold text-emerald-700 group-hover:translate-x-0.5 transition-transform shrink-0">
                           Aanvragen →
                         </span>
                       </button>
@@ -1555,22 +1557,22 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                       <button
                         type="button"
                         onClick={handleApplyExtraShiftFullDay}
-                        className="w-full p-2.5 rounded-xl bg-blue-50/90 hover:bg-blue-100 border border-blue-200 hover:border-blue-400 text-blue-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
+                        className="w-full p-2.5 rounded-xl bg-emerald-100/70 hover:bg-emerald-100 border border-emerald-300 hover:border-emerald-500 text-emerald-950 flex items-center justify-between transition cursor-pointer group shadow-2xs"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
-                            <UserPlus className="w-4 h-4" />
+                          <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+                            <UserPlus className="w-4 h-4 stroke-[2.5]" />
                           </div>
                           <div className="text-left">
-                            <span className="font-extrabold text-xs block text-blue-950 group-hover:text-blue-900">
+                            <span className="font-extrabold text-xs block text-emerald-950 group-hover:text-emerald-900">
                               Extra dienst aanvragen (Volledige dag · VM + NM · 1.0 dag)
                             </span>
-                            <span className="text-[11px] text-blue-700/80 font-medium block">
+                            <span className="text-[11px] text-emerald-800/80 font-medium block">
                               Dient ter goedkeuring in het tabblad 'Verlof Goedkeuren'
                             </span>
                           </div>
                         </div>
-                        <span className="text-xs font-bold text-blue-600 group-hover:translate-x-0.5 transition-transform shrink-0">
+                        <span className="text-xs font-bold text-emerald-700 group-hover:translate-x-0.5 transition-transform shrink-0">
                           Aanvragen →
                         </span>
                       </button>
@@ -1804,7 +1806,7 @@ const InteractiveSlotCell: React.FC<InteractiveSlotCellProps> = ({
           }. Beoordelen kan enkel via het tabblad 'Verlof Goedkeuren'. Klik voor details.`}
           className={`w-full min-h-[44px] rounded-lg p-1.5 flex flex-col items-center justify-center transition cursor-pointer shadow-2xs group relative border-2 border-dashed ${
             isExtraShift
-              ? 'bg-blue-50 hover:bg-blue-100/90 border-blue-400 text-blue-950'
+              ? 'bg-emerald-50/90 hover:bg-emerald-100/90 border-emerald-500 text-emerald-950'
               : isCompensated
               ? 'bg-teal-50 hover:bg-teal-100/90 border-teal-500 text-teal-950'
               : isCompulsory
@@ -1813,14 +1815,14 @@ const InteractiveSlotCell: React.FC<InteractiveSlotCellProps> = ({
           }`}
         >
           <div className="flex items-center gap-1">
-            <Clock className={`w-3 h-3 ${isExtraShift ? 'text-blue-600' : 'text-amber-600'} shrink-0 animate-pulse`} />
+            <Clock className={`w-3 h-3 ${isExtraShift ? 'text-emerald-700' : 'text-amber-600'} shrink-0 animate-pulse`} />
             <span className="text-[10px] font-black leading-none truncate">
-              {isExtraShift ? 'Extra Dienst' : isCompensated ? 'Gecomp.' : isCompulsory ? 'Verpl.' : 'Verlof'}
+              {isExtraShift ? '+ Dienst' : isCompensated ? 'Gecomp.' : isCompulsory ? 'Verpl.' : 'Verlof'}
             </span>
           </div>
           <span className={`text-[9px] font-bold mt-1 px-1.5 py-0.5 rounded leading-none ${
             isExtraShift
-              ? 'text-blue-800 bg-blue-100/80 border border-blue-200/60'
+              ? 'text-emerald-950 bg-emerald-100 border border-emerald-300 font-extrabold'
               : 'text-amber-800 bg-amber-100/80 border border-amber-200/60'
           }`}>
             In Aanvraag
@@ -1829,20 +1831,20 @@ const InteractiveSlotCell: React.FC<InteractiveSlotCellProps> = ({
       );
     }
 
-    // 1B-Extra. Extra Dienst (Goedgekeurd door coördinator)
+    // 1B-Extra. Extra Dienst (Goedgekeurd door coördinator) -> Groene kleur van klassieke dienst maar iets meer opvallend
     if (isExtraShift && isApproved) {
       return (
         <button
           type="button"
           onClick={onClick}
           title="Extra Dienst (Goedgekeurd · Arts aanwezig). Klik voor opties."
-          className="w-full h-9 rounded-lg flex flex-col items-center justify-center p-0.5 shadow-2xs transition cursor-pointer group bg-blue-100 hover:bg-blue-200/90 border border-blue-400 text-blue-950"
+          className="w-full h-9 rounded-lg flex flex-col items-center justify-center p-0.5 shadow-xs transition cursor-pointer group bg-emerald-100 hover:bg-emerald-200/90 border-2 border-emerald-500 text-emerald-950 ring-1 ring-emerald-400/40"
         >
           <div className="flex items-center gap-1">
-            <UserPlus className="w-3 h-3 text-blue-700 group-hover:scale-110 transition-transform" />
-            <Check className="w-2.5 h-2.5 text-blue-800 stroke-[3]" />
+            <UserPlus className="w-3.5 h-3.5 text-emerald-700 stroke-[2.5] group-hover:scale-110 transition-transform" />
+            <Check className="w-2.5 h-2.5 text-emerald-800 stroke-[3]" />
           </div>
-          <span className="text-[9px] font-black leading-none mt-0.5 text-blue-900">
+          <span className="text-[9px] font-black leading-none mt-0.5 text-emerald-950">
             + Dienst
           </span>
         </button>
@@ -1920,21 +1922,21 @@ const InteractiveSlotCell: React.FC<InteractiveSlotCellProps> = ({
             ? "Extra ingeboekt werkmoment (Arts aanwezig). Klik om aan te passen of te annuleren."
             : "Dienst (Aanwezig). Klik om direct te kiezen voor verlof of aanpassen."
         }
-        className={`w-full h-9 rounded-lg flex flex-col items-center justify-center transition cursor-pointer group hover:shadow-2xs border ${
+        className={`w-full h-9 rounded-lg flex flex-col items-center justify-center transition cursor-pointer group hover:shadow-xs border ${
           isOverriddenShift
-            ? 'bg-blue-100 hover:bg-blue-200 border-2 border-blue-500 text-blue-950 font-bold shadow-2xs'
+            ? 'bg-emerald-100 hover:bg-emerald-200/90 border-2 border-emerald-500 text-emerald-950 font-black shadow-xs ring-1 ring-emerald-400/40'
             : 'bg-emerald-50 hover:bg-emerald-100 border border-emerald-300/80 text-emerald-800'
         }`}
       >
         <div className="flex items-center gap-1">
           {isOverriddenShift ? (
-            <UserPlus className="w-3.5 h-3.5 text-blue-700 group-hover:scale-110 transition-transform" />
+            <UserPlus className="w-3.5 h-3.5 text-emerald-700 stroke-[2.5] group-hover:scale-110 transition-transform" />
           ) : (
             <Check className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
           )}
         </div>
         <span className={`text-[9px] leading-none mt-0.5 ${
-          isOverriddenShift ? 'text-blue-900 font-black' : 'text-emerald-700 font-extrabold'
+          isOverriddenShift ? 'text-emerald-950 font-black' : 'text-emerald-700 font-extrabold'
         }`}>
           {isOverriddenShift ? '+ Dienst' : 'Dienst'}
         </span>

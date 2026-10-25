@@ -235,34 +235,30 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       col('leave_requests'),
       snapshot => {
         const list: LeaveRequest[] = [];
-        const seenKeys = new Set<string>();
         snapshot.forEach(d => {
           const data = d.data() as Partial<LeaveRequest>;
           if (isDummyLeaveRequest(data) || !data.staff_id || !data.date) {
-            deleteDoc(d.ref).catch(() => {});
-          } else {
-            const req = { ...data, id: d.id } as LeaveRequest;
-            const normStaff = (req.staff_id || '').replace(/^staff-/, '').trim().toLowerCase();
-            const key = `${normStaff}_${req.date}_${req.slot}`;
-            if (seenKeys.has(key)) {
-              deleteDoc(d.ref).catch(() => {});
-            } else {
-              seenKeys.add(key);
-              list.push(req);
-            }
+            // Ignore dummy or corrupt records without issuing destructive deletes during read listening
+            return;
           }
+          const req = { ...data, id: d.id } as LeaveRequest;
+          list.push(req);
         });
 
         setLeaveRequests(prev => {
           const firestoreIds = new Set(list.map(r => r.id));
-          const now = Date.now();
-          // Retain recent local optimistic requests (< 2 mins old) not yet reflected in Firestore snapshot
-          const pendingRecent = prev.filter(r => {
-            if (firestoreIds.has(r.id)) return false;
-            const created = r.created_at ? new Date(r.created_at).getTime() : 0;
-            return now - created < 120000;
-          });
-          const merged = [...list, ...pendingRecent];
+          // Retain legitimate local optimistic/cached requests that are not yet reflected in Firestore
+          const uncommittedLocal = prev.filter(r => !firestoreIds.has(r.id) && !isDummyLeaveRequest(r));
+
+          // Self-heal: ensure any uncommitted local requests get saved to Firestore in background
+          if (uncommittedLocal.length > 0) {
+            uncommittedLocal.forEach(r => {
+              setDoc(docRef('leave_requests', r.id), sanitizeForFirestore(r))
+                .catch(err => console.warn('Background sync of local leave request to Firestore:', err));
+            });
+          }
+
+          const merged = [...list, ...uncommittedLocal];
           try {
             localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(merged));
           } catch (e) {}
@@ -500,7 +496,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     type: LeaveType,
     note?: string
   ) => {
-    // 1. Clear any conflicting custom shift override for this slot
+    // 1. Clear any conflicting custom shift override for this slot locally and in Firestore
     if (slot === 'HELE_DAG') {
       const k1 = `${staffId}_${date}_vm`;
       const k2 = `${staffId}_${date}_nm`;
@@ -513,6 +509,8 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         } catch (e) {}
         return next;
       });
+      deleteDoc(docRef('leave_config', `override_${k1}`)).catch(() => {});
+      deleteDoc(docRef('leave_config', `override_${k2}`)).catch(() => {});
     } else {
       const overrideKey = `${staffId}_${date}_${slot.toLowerCase()}`;
       setShiftOverrides(prev => {
@@ -523,12 +521,8 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         } catch (e) {}
         return next;
       });
+      deleteDoc(docRef('leave_config', `override_${overrideKey}`)).catch(() => {});
     }
-
-    const newTargetId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    let docToWrite: LeaveRequest | null = null;
-    let splitDocToWrite: LeaveRequest | null = null;
-    const toDeleteFromDb: string[] = [];
 
     const isSameStaff = (r: LeaveRequest) => {
       if (r.staff_id === staffId) return true;
@@ -537,89 +531,82 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return false;
     };
 
-    // 2. ZERO-LATENCY OPTIMISTIC UPDATE
-    setLeaveRequests(prev => {
-      const existingSameSlot = prev.find(r => isSameStaff(r) && r.date === date && r.slot === slot);
-      const existingFullDay = prev.find(r => isSameStaff(r) && r.date === date && r.slot === 'HELE_DAG');
+    // 2. Synchronously determine target request and any splits/deletions from current state
+    const existingSameSlot = leaveRequests.find(r => isSameStaff(r) && r.date === date && r.slot === slot);
+    const existingFullDay = leaveRequests.find(r => isSameStaff(r) && r.date === date && r.slot === 'HELE_DAG');
 
-      const targetId = existingSameSlot?.id || (slot === 'HELE_DAG' && existingFullDay ? existingFullDay.id : newTargetId);
-      const updatedRequest: LeaveRequest = {
-        id: targetId,
+    const targetId = existingSameSlot?.id || (slot === 'HELE_DAG' && existingFullDay ? existingFullDay.id : `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`);
+
+    const updatedRequest: LeaveRequest = {
+      id: targetId,
+      staff_id: staffId,
+      staff_name: staffName,
+      date: date,
+      slot: slot,
+      units: slot === 'HELE_DAG' ? 1.0 : 0.5,
+      type: type,
+      status: 'aangevraagd',
+      ...(note?.trim() ? { note: note.trim() } : {}),
+      created_at: existingSameSlot?.created_at || existingFullDay?.created_at || new Date().toISOString()
+    };
+
+    const toDeleteFromDb: string[] = [];
+    let splitDocToWrite: LeaveRequest | null = null;
+
+    if (slot !== 'HELE_DAG' && existingFullDay) {
+      const otherSlot: 'VM' | 'NM' = slot === 'VM' ? 'NM' : 'VM';
+      splitDocToWrite = {
+        id: `req-${Date.now()}-split-${Math.random().toString(36).substring(2, 7)}`,
         staff_id: staffId,
         staff_name: staffName,
         date: date,
-        slot: slot,
-        units: slot === 'HELE_DAG' ? 1.0 : 0.5,
-        type: type,
-        status: 'aangevraagd',
-        ...(note?.trim() ? { note: note.trim() } : {}),
-        created_at: existingSameSlot?.created_at || existingFullDay?.created_at || new Date().toISOString()
+        slot: otherSlot,
+        units: 0.5,
+        type: existingFullDay.type,
+        status: existingFullDay.status,
+        created_at: existingFullDay.created_at || new Date().toISOString()
       };
-      docToWrite = updatedRequest;
-
-      // If updating a single half-day slot (VM or NM) when there was previously a HELE_DAG request,
-      // preserve the OTHER half-day as leave so it doesn't accidentally become working!
-      const additionalRequests: LeaveRequest[] = [];
-      if (slot !== 'HELE_DAG' && existingFullDay) {
-        const otherSlot: 'VM' | 'NM' = slot === 'VM' ? 'NM' : 'VM';
-        const splitReq: LeaveRequest = {
-          id: `req-${Date.now()}-split-${Math.random().toString(36).substring(2, 7)}`,
-          staff_id: staffId,
-          staff_name: staffName,
-          date: date,
-          slot: otherSlot,
-          units: 0.5,
-          type: existingFullDay.type,
-          status: existingFullDay.status,
-          created_at: existingFullDay.created_at
-        };
-        additionalRequests.push(splitReq);
-        splitDocToWrite = splitReq;
-        if (existingFullDay.id !== targetId) {
-          toDeleteFromDb.push(existingFullDay.id);
-        }
+      if (existingFullDay.id !== targetId) {
+        toDeleteFromDb.push(existingFullDay.id);
       }
+    }
 
-      // Filter out replaced requests
-      const next = prev.filter(r => {
-        if (!isSameStaff(r) || r.date !== date) return true;
-        if (slot === 'HELE_DAG') {
-          if (r.id !== targetId) toDeleteFromDb.push(r.id);
-          return false; // HELE_DAG replaces everything on that date
-        }
-        if (r.slot === 'HELE_DAG') {
-          if (r.id !== targetId) toDeleteFromDb.push(r.id);
-          return false; // Replaced by the new request + split request
-        }
-        if (r.slot === slot) {
-          if (r.id !== targetId) toDeleteFromDb.push(r.id);
-          return false;
-        }
-        return true;
-      });
-
-      next.push(updatedRequest);
-      if (additionalRequests.length > 0) {
-        next.push(...additionalRequests);
+    leaveRequests.forEach(r => {
+      if (!isSameStaff(r) || r.date !== date) return;
+      if (slot === 'HELE_DAG' && r.id !== targetId) {
+        toDeleteFromDb.push(r.id);
+      } else if (r.slot === 'HELE_DAG' && r.id !== targetId) {
+        toDeleteFromDb.push(r.id);
+      } else if (r.slot === slot && r.id !== targetId) {
+        toDeleteFromDb.push(r.id);
       }
+    });
 
+    // 3. Instant optimistic update to local state & localStorage
+    setLeaveRequests(prev => {
+      const filtered = prev.filter(r => !toDeleteFromDb.includes(r.id) && r.id !== targetId);
+      const next = [...filtered, updatedRequest];
+      if (splitDocToWrite) {
+        next.push(splitDocToWrite);
+      }
       try {
         localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
 
-    // 3. PERSIST TO FIRESTORE
+    // 4. Reliable direct persistence to Firestore
     toDeleteFromDb.forEach(oldId => {
       deleteDoc(docRef('leave_requests', oldId)).catch(() => {});
     });
-    if (docToWrite) {
-      setDoc(docRef('leave_requests', (docToWrite as LeaveRequest).id), sanitizeForFirestore(docToWrite))
-        .catch(err => console.warn('Firestore leave request write failed, saved locally:', err));
-    }
-    if (splitDocToWrite) {
-      setDoc(docRef('leave_requests', (splitDocToWrite as LeaveRequest).id), sanitizeForFirestore(splitDocToWrite))
-        .catch(err => console.warn('Firestore split leave request write failed, saved locally:', err));
+
+    try {
+      await setDoc(docRef('leave_requests', updatedRequest.id), sanitizeForFirestore(updatedRequest));
+      if (splitDocToWrite) {
+        await setDoc(docRef('leave_requests', splitDocToWrite.id), sanitizeForFirestore(splitDocToWrite));
+      }
+    } catch (err) {
+      console.warn('Firestore direct leave write failed, saved in local store:', err);
     }
   };
 
@@ -634,13 +621,26 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
-    // 2. PERSIST TO FIRESTORE IN BACKGROUND (NON-BLOCKING)
+    // 2. PERSIST TO FIRESTORE
     deleteDoc(docRef('leave_requests', requestId))
       .catch(err => console.warn('Firestore leave delete failed, removed locally:', err));
   };
 
   const handleDirectSwitchLeaveType = async (requestId: string, newType: LeaveType) => {
     if (!requestId) return;
+    const existing = leaveRequests.find(r => r.id === requestId);
+    const updated: LeaveRequest = existing
+      ? { ...existing, type: newType, status: 'aangevraagd' }
+      : {
+          id: requestId,
+          staff_id: '',
+          date: '',
+          slot: 'HELE_DAG',
+          units: 1,
+          type: newType,
+          status: 'aangevraagd'
+        };
+
     // 1. ZERO-LATENCY OPTIMISTIC UPDATE
     setLeaveRequests(prev => {
       const next = prev.map(r => {
@@ -659,11 +659,16 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
-    // 2. PERSIST TO FIRESTORE IN BACKGROUND (NON-BLOCKING)
-    updateDoc(docRef('leave_requests', requestId), {
-      type: newType,
-      status: 'aangevraagd'
-    }).catch(err => console.warn('Firestore switch leave type failed, updated locally:', err));
+    // 2. PERSIST COMPLETE DOCUMENT TO FIRESTORE
+    if (existing) {
+      setDoc(docRef('leave_requests', requestId), sanitizeForFirestore(updated), { merge: true })
+        .catch(err => console.warn('Firestore switch leave type failed:', err));
+    } else {
+      updateDoc(docRef('leave_requests', requestId), {
+        type: newType,
+        status: 'aangevraagd'
+      }).catch(err => console.warn('Firestore switch leave type failed:', err));
+    }
   };
 
   // --- Direct Shift Overrides (Dienst / Vrij roosteren) ---
@@ -674,54 +679,45 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     status: 'dienst' | 'vrij'
   ) => {
     const overrideKey = `${staffId}_${date}_${slot.toLowerCase()}`;
-    let splitDocToWrite: LeaveRequest | null = null;
+    const existingFullDay = leaveRequests.find(r => r.staff_id === staffId && r.date === date && r.slot === 'HELE_DAG');
+    const existingSlotReq = leaveRequests.find(r => r.staff_id === staffId && r.date === date && r.slot === slot);
+
     let docToDelete: string | null = null;
+    let splitDocToWrite: LeaveRequest | null = null;
 
-    // Remove any conflicting leave request for this slot or split full day
+    if (existingSlotReq) {
+      docToDelete = existingSlotReq.id;
+    } else if (existingFullDay) {
+      docToDelete = existingFullDay.id;
+      const otherSlot: 'VM' | 'NM' = slot === 'VM' ? 'NM' : 'VM';
+      splitDocToWrite = {
+        id: `req-${Date.now()}-split`,
+        staff_id: staffId,
+        date: date,
+        slot: otherSlot,
+        units: 0.5,
+        type: existingFullDay.type,
+        status: existingFullDay.status,
+        created_at: existingFullDay.created_at || new Date().toISOString()
+      };
+    }
+
+    // 1. Update leaveRequests state & localStorage
     setLeaveRequests(prev => {
-      const existingFullDay = prev.find(r => r.staff_id === staffId && r.date === date && r.slot === 'HELE_DAG');
-      const existingSlotReq = prev.find(r => r.staff_id === staffId && r.date === date && r.slot === slot);
-
-      if (existingSlotReq) {
-        docToDelete = existingSlotReq.id;
-      }
-
-      const additional: LeaveRequest[] = [];
-      if (existingFullDay) {
-        docToDelete = existingFullDay.id;
-        const otherSlot: 'VM' | 'NM' = slot === 'VM' ? 'NM' : 'VM';
-        const splitReq: LeaveRequest = {
-          id: `req-${Date.now()}-split`,
-          staff_id: staffId,
-          date: date,
-          slot: otherSlot,
-          units: 0.5,
-          type: existingFullDay.type,
-          status: existingFullDay.status,
-          created_at: existingFullDay.created_at
-        };
-        additional.push(splitReq);
-        splitDocToWrite = splitReq;
-      }
-
       const next = prev.filter(r => {
         if (r.staff_id !== staffId || r.date !== date) return true;
         if (r.slot === 'HELE_DAG') return false;
         if (r.slot === slot) return false;
         return true;
       });
-
-      if (additional.length > 0) {
-        next.push(...additional);
-      }
-
+      if (splitDocToWrite) next.push(splitDocToWrite);
       try {
         localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
 
-    // Set shift override
+    // 2. Set shift override in state & localStorage
     setShiftOverrides(prev => {
       const next = { ...prev, [overrideKey]: status };
       try {
@@ -730,7 +726,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
-    // Async persist in background
+    // 3. Persist to Firestore
     if (docToDelete) {
       deleteDoc(docRef('leave_requests', docToDelete))
         .catch(err => console.warn('Firestore leave delete for shift error:', err));
@@ -770,17 +766,32 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   // --- Leave Requests (Approvals & Status) ---
   const handleUpdateLeaveStatus = async (requestId: string, newStatus: LeaveStatus, note?: string) => {
     if (!requestId || typeof requestId !== 'string') return;
-    let fullUpdated: LeaveRequest | undefined;
+    const existing = leaveRequests.find(r => r.id === requestId);
+    const updated: LeaveRequest = existing
+      ? {
+          ...existing,
+          status: newStatus,
+          ...(note !== undefined ? { note } : {})
+        }
+      : {
+          id: requestId,
+          staff_id: '',
+          date: '',
+          slot: 'HELE_DAG',
+          units: 1,
+          type: 'regulier',
+          status: newStatus,
+          ...(note !== undefined ? { note } : {})
+        };
 
     setLeaveRequests(prev => {
       const next = prev.map(r => {
         if (r.id === requestId) {
-          fullUpdated = {
+          return {
             ...r,
             status: newStatus,
             ...(note !== undefined ? { note } : {})
           };
-          return fullUpdated;
         }
         return r;
       });
@@ -791,15 +802,15 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     });
 
     try {
-      if (fullUpdated) {
+      if (existing) {
         // ALWAYS write the complete sanitized document so staff_id, date, slot etc. are never lost!
-        await setDoc(docRef('leave_requests', requestId), sanitizeForFirestore(fullUpdated), { merge: true });
+        await setDoc(docRef('leave_requests', requestId), sanitizeForFirestore(updated), { merge: true });
       } else {
         const payload: Record<string, any> = { status: newStatus };
         if (note !== undefined) {
           payload.note = note;
         }
-        await setDoc(docRef('leave_requests', requestId), payload, { merge: true });
+        await updateDoc(docRef('leave_requests', requestId), payload);
       }
     } catch (err) {
       console.warn('Firestore update leave status failed, updated locally:', err);
@@ -807,16 +818,13 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   };
 
   const handleUpdateLeaveNote = async (requestId: string, note: string) => {
-    let fullUpdated: LeaveRequest | undefined;
+    const existing = leaveRequests.find(r => r.id === requestId);
+    const updated: LeaveRequest = existing
+      ? { ...existing, note }
+      : { id: requestId, staff_id: '', date: '', slot: 'HELE_DAG', units: 1, type: 'regulier', status: 'aangevraagd', note };
 
     setLeaveRequests(prev => {
-      const next = prev.map(r => {
-        if (r.id === requestId) {
-          fullUpdated = { ...r, note };
-          return fullUpdated;
-        }
-        return r;
-      });
+      const next = prev.map(r => (r.id === requestId ? { ...r, note } : r));
       try {
         localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
       } catch (e) {}
@@ -824,10 +832,10 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     });
 
     try {
-      if (fullUpdated) {
-        await setDoc(docRef('leave_requests', requestId), sanitizeForFirestore(fullUpdated), { merge: true });
+      if (existing) {
+        await setDoc(docRef('leave_requests', requestId), sanitizeForFirestore(updated), { merge: true });
       } else {
-        await setDoc(docRef('leave_requests', requestId), { note }, { merge: true });
+        await updateDoc(docRef('leave_requests', requestId), { note });
       }
     } catch (err) {
       console.warn('Firestore update leave note failed, updated locally:', err);
@@ -851,15 +859,30 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     }
   };
 
-  const handleBatchApproveAllPending = async () => {
-    const updatedDocs: LeaveRequest[] = [];
+  const handleBatchApproveAllPending = async (targetRequestIds?: string[]) => {
+    // 1. Identify which pending requests to approve from current state
+    const pendingToApprove = leaveRequests.filter(r => {
+      if (r.status !== 'aangevraagd') return false;
+      if (targetRequestIds && targetRequestIds.length > 0) {
+        return targetRequestIds.includes(r.id);
+      }
+      return true;
+    });
 
+    if (pendingToApprove.length === 0) return;
+
+    const approvedList: LeaveRequest[] = pendingToApprove.map(r => ({
+      ...r,
+      status: 'goedgekeurd' as LeaveStatus
+    }));
+
+    const approvedIdSet = new Set(approvedList.map(r => r.id));
+
+    // 2. Immediate zero-latency local optimistic update
     setLeaveRequests(prev => {
       const next = prev.map(r => {
-        if (r.status === 'aangevraagd') {
-          const approved = { ...r, status: 'goedgekeurd' as LeaveStatus };
-          updatedDocs.push(approved);
-          return approved;
+        if (approvedIdSet.has(r.id)) {
+          return { ...r, status: 'goedgekeurd' as LeaveStatus };
         }
         return r;
       });
@@ -869,15 +892,23 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
+    // 3. Persist ALL approved requests to Firestore in safe chunks
     try {
-      const batch = writeBatch(db);
-      updatedDocs.forEach(r => {
-        // Write the full sanitized document
-        batch.set(docRef('leave_requests', r.id), sanitizeForFirestore(r), { merge: true });
-      });
-      await batch.commit();
+      const batchSize = 400;
+      for (let i = 0; i < approvedList.length; i += batchSize) {
+        const chunk = approvedList.slice(i, i + batchSize);
+        const batch = writeBatch(db);
+        chunk.forEach(r => {
+          batch.set(docRef('leave_requests', r.id), sanitizeForFirestore(r), { merge: true });
+        });
+        await batch.commit();
+      }
     } catch (err) {
-      console.warn('Firestore batch approve failed, updated locally:', err);
+      console.warn('Firestore batch approve failed, using individual fallback:', err);
+      approvedList.forEach(r => {
+        setDoc(docRef('leave_requests', r.id), sanitizeForFirestore(r), { merge: true })
+          .catch(e => console.warn('Individual approve fallback failed:', e));
+      });
     }
   };
 

@@ -142,11 +142,11 @@ export async function initializeDatabaseIfEmpty() {
         }
       });
 
-      // 4. Leave Requests (Purge dummy, sample, or corrupt records without staff_id or date)
+      // 4. Leave Requests (Purge dummy, sample, or corrupt records)
       const leaveReqSnap = await getDocs(col('leave_requests'));
       leaveReqSnap.forEach(lr => {
         const data = lr.data() as Partial<LeaveRequest>;
-        if (isDummyLeaveRequest(data) || !data.staff_id || !data.date) {
+        if (isDummyLeaveRequest(data)) {
           purgeBatch.delete(lr.ref);
           purgeOps++;
         }
