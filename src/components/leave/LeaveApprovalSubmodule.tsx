@@ -61,6 +61,8 @@ export interface LeaveApprovalSubmoduleProps {
   shiftOverrides?: Record<string, 'dienst' | 'vrij'>;
   onAddComment?: (comment: Omit<GeneralComment, 'id' | 'created_at'>) => Promise<void>;
   onDeleteComment?: (commentId: string) => Promise<void>;
+  onRestoreComment?: (commentId: string) => Promise<void>;
+  onPermanentDeleteComment?: (commentId: string) => Promise<void>;
   onAddTodo?: (todo: Omit<TodoItem, 'id' | 'created_at'>) => Promise<void>;
   onToggleTodo?: (todoId: string, currentCompleted: boolean) => Promise<void>;
   onDeleteTodo?: (todoId: string) => Promise<void>;
@@ -97,6 +99,8 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
   shiftOverrides = {},
   onAddComment,
   onDeleteComment,
+  onRestoreComment,
+  onPermanentDeleteComment,
   onAddTodo,
   onToggleTodo,
   onDeleteTodo,
@@ -132,6 +136,7 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
   const [commentText, setCommentText] = useState('');
   const [commentAuthorId, setCommentAuthorId] = useState<string>(staffList[0]?.id || '');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [showCommentArchive, setShowCommentArchive] = useState(false);
 
   // Top Todo Form State
   const [todoTitle, setTodoTitle] = useState('');
@@ -171,12 +176,18 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
   const doctors = useMemo(() => staffList.filter(s => s.role === 'arts'), [staffList]);
   const nurses = useMemo(() => staffList.filter(s => s.role === 'verpleegkundige'), [staffList]);
 
-  // Filter comments for current week
-  const currentWeekComments = useMemo(() => {
+  // Comments: Active (persist indefinitely across weeks until manually archived) vs Archived
+  const activeComments = useMemo(() => {
     return comments
-      .filter(c => c.week_identifier === weekInfo.identifier)
+      .filter(c => !c.archived)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [comments, weekInfo.identifier]);
+  }, [comments]);
+
+  const archivedComments = useMemo(() => {
+    return comments
+      .filter(c => !!c.archived)
+      .sort((a, b) => new Date(b.deleted_at || b.created_at).getTime() - new Date(a.deleted_at || a.created_at).getTime());
+  }, [comments]);
 
   // Split todos into Active and Archived
   const activeTodos = useMemo(() => todos.filter(t => !t.archived), [todos]);
@@ -227,8 +238,10 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
         week_identifier: weekInfo.identifier,
         author_id: authorId,
         author_name: author ? author.name : 'Coördinator',
-        message: text
+        message: text,
+        archived: false
       });
+      setShowCommentArchive(false);
     } catch (err) {
       console.error('Fout bij plaatsen opmerking:', err);
     } finally {
@@ -502,7 +515,8 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
       week_identifier: weekInfo.identifier,
       author_id: modalCommentAuthorId,
       author_name: author ? author.name : 'Coördinator',
-      message: modalDayCommentText.trim()
+      message: modalDayCommentText.trim(),
+      archived: false
     });
 
     setModalFeedback('Commentaar geplaatst in Algemene Opmerkingen!');
@@ -528,7 +542,8 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
       week_identifier: weekInfo.identifier,
       author_id: dayCommentAuthorId,
       author_name: author ? author.name : 'Coördinator',
-      message: dayCommentText.trim()
+      message: dayCommentText.trim(),
+      archived: false
     });
     setDayModalFeedback('Opmerking succesvol geplaatst in het weekoverzicht!');
     setTimeout(() => {
@@ -652,68 +667,170 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
                 <h3 className="font-bold text-slate-800 text-xs">Algemene Opmerkingen</h3>
               </div>
             </div>
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800">
-              {currentWeekComments.length} berichten
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">
+                {activeComments.length} actief
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowCommentArchive(!showCommentArchive)}
+                className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 border cursor-pointer ${
+                  showCommentArchive
+                    ? 'bg-slate-800 text-white border-slate-800'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <Archive className="w-3 h-3" />
+                <span>{showCommentArchive ? 'Actief' : `Archief (${archivedComments.length})`}</span>
+              </button>
+            </div>
           </div>
 
           {/* Feed */}
           <div className="flex-1 overflow-y-auto p-3.5 space-y-2.5">
-            {currentWeekComments.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-400">
-                <MessageSquare className="w-7 h-7 stroke-1 text-slate-300 mb-1.5" />
-                <p className="text-xs font-medium">Nog geen opmerkingen voor {weekInfo.identifier}.</p>
-                <p className="text-[10px] text-slate-400">Plaats hieronder een mededeling of afspraak.</p>
-              </div>
-            ) : (
-              currentWeekComments.map(comment => {
-                const author = staffList.find(s => s.id === comment.author_id);
-                const roleBadge = author?.role === 'arts' ? 'Arts' : 'Verpleegkundige';
-                const roleColor =
-                  author?.role === 'arts'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                const timeStr = new Date(comment.created_at).toLocaleDateString('nl-BE', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                });
+            {!showCommentArchive ? (
+              activeComments.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-400">
+                  <MessageSquare className="w-7 h-7 stroke-1 text-slate-300 mb-1.5" />
+                  <p className="text-xs font-medium">Geen actieve opmerkingen.</p>
+                  <p className="text-[10px] text-slate-400">Plaats hieronder een mededeling die zichtbaar blijft voor het team.</p>
+                </div>
+              ) : (
+                activeComments.map(comment => {
+                  const author = staffList.find(s => s.id === comment.author_id);
+                  const roleBadge = author?.role === 'arts' ? 'Arts' : 'Verpleegkundige';
+                  const roleColor =
+                    author?.role === 'arts'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                  const timeStr = new Date(comment.created_at).toLocaleDateString('nl-BE', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  });
 
-                return (
-                  <div
-                    key={comment.id}
-                    className="p-2.5 rounded-xl bg-slate-50/90 border border-slate-200/70 hover:bg-slate-50 transition group"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-xs text-slate-800">
-                          {comment.author_name || author?.name || 'Onbekend'}
-                        </span>
-                        <span className={`text-[9px] px-1.5 py-0.2 rounded border font-semibold ${roleColor}`}>
-                          {roleBadge}
-                        </span>
+                  return (
+                    <div
+                      key={comment.id}
+                      className="p-2.5 rounded-xl bg-slate-50/90 border border-slate-200/70 hover:bg-slate-50 transition group"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs text-slate-800">
+                            {comment.author_name || author?.name || 'Onbekend'}
+                          </span>
+                          <span className={`text-[9px] px-1.5 py-0.2 rounded border font-semibold ${roleColor}`}>
+                            {roleBadge}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] text-slate-400">{timeStr}</span>
+                          {onDeleteComment && (
+                            <button
+                              type="button"
+                              onClick={() => onDeleteComment(comment.id)}
+                              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 transition p-0.5 cursor-pointer"
+                              title="Naar archief verplaatsen"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] text-slate-400">{timeStr}</span>
-                        {onDeleteComment && (
-                          <button
-                            type="button"
-                            onClick={() => onDeleteComment(comment.id)}
-                            className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 transition p-0.5 cursor-pointer"
-                            title="Opmerking verwijderen"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
+                      <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                        {comment.message}
+                      </p>
                     </div>
-                    <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
-                      {comment.message}
-                    </p>
+                  );
+                })
+              )
+            ) : (
+              /* Archive Feed */
+              archivedComments.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-400">
+                  <Archive className="w-7 h-7 stroke-1 text-slate-300 mb-1.5" />
+                  <p className="text-xs font-medium">Het opmerkingenarchief is leeg.</p>
+                  <p className="text-[10px] text-slate-400">Verwijderde opmerkingen blijven hier bewaard en kunnen hersteld worden.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[10px] text-slate-500 font-semibold px-1">
+                    <span>Verwijderde / Gearchiveerde Opmerkingen</span>
+                    <span>{archivedComments.length} items</span>
                   </div>
-                );
-              })
+                  {archivedComments.map(comment => {
+                    const author = staffList.find(s => s.id === comment.author_id);
+                    const roleBadge = author?.role === 'arts' ? 'Arts' : 'Verpleegkundige';
+                    const roleColor =
+                      author?.role === 'arts'
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                    const timeStr = new Date(comment.created_at).toLocaleDateString('nl-BE', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    });
+                    const archiveTimeStr = comment.deleted_at
+                      ? new Date(comment.deleted_at).toLocaleDateString('nl-BE', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })
+                      : null;
+
+                    return (
+                      <div
+                        key={comment.id}
+                        className="p-2.5 rounded-xl bg-slate-50/90 border border-slate-200/80 hover:bg-slate-50 transition opacity-90 group"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-xs text-slate-700">
+                              {comment.author_name || author?.name || 'Onbekend'}
+                            </span>
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded border font-semibold ${roleColor}`}>
+                              {roleBadge}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {onRestoreComment && (
+                              <button
+                                type="button"
+                                onClick={() => onRestoreComment(comment.id)}
+                                className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 flex items-center gap-1 transition cursor-pointer shadow-2xs"
+                                title="Herstellen naar actieve opmerkingen"
+                              >
+                                <RotateCcw className="w-2.5 h-2.5 text-indigo-600" />
+                                Herstel
+                              </button>
+                            )}
+                            {onPermanentDeleteComment && (
+                              <button
+                                type="button"
+                                onClick={() => onPermanentDeleteComment(comment.id)}
+                                className="text-slate-400 hover:text-red-600 transition p-0.5 cursor-pointer"
+                                title="Definitief wissen"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed line-through decoration-slate-300">
+                          {comment.message}
+                        </p>
+                        <div className="mt-1 flex items-center justify-between text-[9px] text-slate-400">
+                          <span>Geplaatst: {timeStr}</span>
+                          {archiveTimeStr && <span>Gearchiveerd: {archiveTimeStr}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
             )}
           </div>
 
@@ -724,7 +841,7 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
           >
             <input
               type="text"
-              placeholder="Typ een opmerking voor deze week..."
+              placeholder="Typ een algemene opmerking (blijft actief)..."
               value={commentText}
               onChange={e => setCommentText(e.target.value)}
               className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"

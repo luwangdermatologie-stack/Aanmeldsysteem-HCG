@@ -274,17 +274,15 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     const unsubComments = onSnapshot(
       col('leave_comments'),
       snapshot => {
-        if (!snapshot.empty) {
-          const list: GeneralComment[] = [];
-          snapshot.forEach(d => {
-            const data = d.data();
-            list.push({ ...data, id: d.id } as GeneralComment);
-          });
-          setComments(list);
-          try {
-            localStorage.setItem(getEnvStorageKey('derm_leave_comments_store'), JSON.stringify(list));
-          } catch (e) {}
-        }
+        const list: GeneralComment[] = [];
+        snapshot.forEach(d => {
+          const data = d.data();
+          list.push({ ...data, id: d.id } as GeneralComment);
+        });
+        setComments(list);
+        try {
+          localStorage.setItem(getEnvStorageKey('derm_leave_comments_store'), JSON.stringify(list));
+        } catch (e) {}
       },
       err => {
         console.warn('Firestore leave_comments listener (using local cache):', err);
@@ -393,7 +391,8 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     const newComment: GeneralComment = {
       ...commentData,
       id: newId,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      archived: false
     };
 
     // Optimistic local state update
@@ -405,12 +404,46 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
-    // Non-blocking Firestore sync (optimistic local update already applied)
+    // Non-blocking Firestore sync
     setDoc(docRef('leave_comments', newId), sanitizeForFirestore(newComment))
       .catch(err => console.warn('Firestore comment write failed, saved locally:', err));
   };
 
+  // Archive / Soft-delete comment: moves comment to archive so it is not lost
   const handleDeleteComment = async (commentId: string) => {
+    const deletedAt = new Date().toISOString();
+    setComments(prev => {
+      const next = prev.map(c => c.id === commentId ? { ...c, archived: true, deleted_at: deletedAt } : c);
+      try {
+        localStorage.setItem(getEnvStorageKey('derm_leave_comments_store'), JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    updateDoc(docRef('leave_comments', commentId), {
+      archived: true,
+      deleted_at: deletedAt
+    }).catch(err => console.warn('Firestore comment archive failed, archived locally:', err));
+  };
+
+  // Restore comment back to active comments
+  const handleRestoreComment = async (commentId: string) => {
+    setComments(prev => {
+      const next = prev.map(c => c.id === commentId ? { ...c, archived: false, deleted_at: undefined } : c);
+      try {
+        localStorage.setItem(getEnvStorageKey('derm_leave_comments_store'), JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    updateDoc(docRef('leave_comments', commentId), {
+      archived: false,
+      deleted_at: null
+    }).catch(err => console.warn('Firestore comment restore failed, restored locally:', err));
+  };
+
+  // Permanently delete comment from database
+  const handlePermanentDeleteComment = async (commentId: string) => {
     setComments(prev => {
       const next = prev.filter(c => c.id !== commentId);
       try {
@@ -420,7 +453,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     });
 
     deleteDoc(docRef('leave_comments', commentId))
-      .catch(err => console.warn('Firestore comment delete failed, removed locally:', err));
+      .catch(err => console.warn('Firestore comment permanent delete failed, removed locally:', err));
   };
 
   // --- Todos ---
@@ -1288,6 +1321,8 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
           shiftOverrides={shiftOverrides}
           onAddComment={handleAddComment}
           onDeleteComment={handleDeleteComment}
+          onRestoreComment={handleRestoreComment}
+          onPermanentDeleteComment={handlePermanentDeleteComment}
           onAddTodo={handleAddTodo}
           onToggleTodo={handleToggleTodo}
           onDeleteTodo={handleDeleteTodo}
@@ -1320,6 +1355,8 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
           shiftOverrides={shiftOverrides}
           onAddComment={handleAddComment}
           onDeleteComment={handleDeleteComment}
+          onRestoreComment={handleRestoreComment}
+          onPermanentDeleteComment={handlePermanentDeleteComment}
           onAddTodo={handleAddTodo}
           onToggleTodo={handleToggleTodo}
           onDeleteTodo={handleDeleteTodo}

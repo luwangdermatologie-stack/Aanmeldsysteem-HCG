@@ -142,11 +142,13 @@ export interface LeaveRequest {
 
 export interface GeneralComment {
   id: string;
-  week_identifier: string; // YYYY-Www (e.g. "2026-W37")
+  week_identifier?: string; // Optionele referentie naar week (e.g. "2026-W37")
   author_id: string;
   author_name?: string;
   message: string;
   created_at: string; // ISO timestamp
+  archived?: boolean; // Blijft actief tenzij gearchiveerd/verwijderd
+  deleted_at?: string; // ISO timestamp wanneer gearchiveerd
 }
 
 export interface TodoItem {
