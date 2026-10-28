@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   setDoc,
   updateDoc,
@@ -93,6 +93,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('week_overview');
   const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const deletedRequestIdsRef = useRef<Set<string>>(new Set());
 
   // Firestore & Local Cache Collections Data
   const [staffList, setStaffList] = useState<StaffMember[]>(() => {
@@ -247,10 +248,16 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
         setLeaveRequests(prev => {
           const firestoreIds = new Set(list.map(r => r.id));
-          // Retain legitimate local optimistic/cached requests that are not yet reflected in Firestore
-          const uncommittedLocal = prev.filter(r => !firestoreIds.has(r.id) && !isDummyLeaveRequest(r));
+          // Filter out explicitly cancelled/deleted IDs from Firestore list as well
+          const validFirestoreList = list.filter(r => !deletedRequestIdsRef.current.has(r.id));
 
-          // Self-heal: ensure any uncommitted local requests get saved to Firestore in background
+          // Retain legitimate local optimistic/cached requests that are not yet reflected in Firestore
+          // AND exclude any deleted request IDs so cancelled leaves are never resurrected!
+          const uncommittedLocal = prev.filter(
+            r => !firestoreIds.has(r.id) && !isDummyLeaveRequest(r) && !deletedRequestIdsRef.current.has(r.id)
+          );
+
+          // Self-heal: ensure legitimate uncommitted local requests get saved to Firestore in background
           if (uncommittedLocal.length > 0) {
             uncommittedLocal.forEach(r => {
               setDoc(docRef('leave_requests', r.id), sanitizeForFirestore(r))
@@ -258,7 +265,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
             });
           }
 
-          const merged = [...list, ...uncommittedLocal];
+          const merged = [...validFirestoreList, ...uncommittedLocal];
           try {
             localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(merged));
           } catch (e) {}
@@ -643,20 +650,84 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     }
   };
 
-  const handleDirectCancelLeave = async (requestId: string) => {
-    if (!requestId) return;
-    // 1. ZERO-LATENCY OPTIMISTIC REMOVAL
+  const handleDirectCancelLeave = async (
+    requestId: string,
+    staffId?: string,
+    date?: string,
+    slot?: 'VM' | 'NM' | 'HELE_DAG'
+  ) => {
+    if (!requestId && (!staffId || !date)) return;
+
+    const idsToDelete = new Set<string>();
+    if (requestId) idsToDelete.add(requestId);
+
+    let splitDocToWrite: LeaveRequest | null = null;
+
+    // Find any leave requests matching staffId & date to remove duplicates
+    if (staffId && date) {
+      const staffMatches = leaveRequests.filter(r => isLeaveRequestForStaff(r, staffId) && r.date === date);
+      staffMatches.forEach(r => {
+        if (!slot || slot === 'HELE_DAG' || r.slot === slot) {
+          idsToDelete.add(r.id);
+        } else if (r.slot === 'HELE_DAG') {
+          // If a whole day leave is cancelled for only VM or NM, split the remaining slot!
+          idsToDelete.add(r.id);
+          const remainingSlot: 'VM' | 'NM' = slot === 'VM' ? 'NM' : 'VM';
+          splitDocToWrite = {
+            id: `req-${Date.now()}-split-${Math.random().toString(36).substring(2, 7)}`,
+            staff_id: staffId,
+            staff_name: r.staff_name,
+            date: date,
+            slot: remainingSlot,
+            units: 0.5,
+            type: r.type,
+            status: r.status,
+            created_at: r.created_at || new Date().toISOString()
+          };
+        }
+      });
+    }
+
+    // Add all deleted IDs to deletedRequestIdsRef so they are NEVER resurrected!
+    idsToDelete.forEach(id => deletedRequestIdsRef.current.add(id));
+
+    // Clear any shift override for this slot if set to 'vrij'
+    if (staffId && date && slot && slot !== 'HELE_DAG') {
+      const overrideKey = `${staffId}_${date}_${slot.toLowerCase()}`;
+      setShiftOverrides(prev => {
+        if (!prev[overrideKey]) return prev;
+        const next = { ...prev };
+        delete next[overrideKey];
+        try {
+          localStorage.setItem(getEnvStorageKey('derm_shift_overrides_store'), JSON.stringify(next));
+        } catch (e) {}
+        return next;
+      });
+      deleteDoc(docRef('leave_config', `override_${overrideKey}`)).catch(() => {});
+    }
+
+    // 1. Immediate zero-latency local optimistic update
     setLeaveRequests(prev => {
-      const next = prev.filter(r => r.id !== requestId);
+      const next = prev.filter(r => !idsToDelete.has(r.id));
+      if (splitDocToWrite) {
+        next.push(splitDocToWrite);
+      }
       try {
         localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
       } catch (e) {}
       return next;
     });
 
-    // 2. PERSIST TO FIRESTORE
-    deleteDoc(docRef('leave_requests', requestId))
-      .catch(err => console.warn('Firestore leave delete failed, removed locally:', err));
+    // 2. Persist deletion to Firestore
+    idsToDelete.forEach(id => {
+      deleteDoc(docRef('leave_requests', id))
+        .catch(err => console.warn('Firestore leave delete failed, removed locally:', err));
+    });
+
+    if (splitDocToWrite) {
+      setDoc(docRef('leave_requests', splitDocToWrite.id), sanitizeForFirestore(splitDocToWrite))
+        .catch(err => console.warn('Firestore split leave create failed:', err));
+    }
   };
 
   const handleDirectSwitchLeaveType = async (requestId: string, newType: LeaveType) => {
@@ -877,6 +948,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
   const handleDeleteLeaveRequest = async (requestId: string) => {
     if (!requestId) return;
+    deletedRequestIdsRef.current.add(requestId);
     setLeaveRequests(prev => {
       const next = prev.filter(r => r.id !== requestId);
       try {
@@ -1176,7 +1248,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       {/* ========================================================================= */}
       <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2 flex-wrap">
         <div className="flex items-center gap-2 overflow-x-auto py-0.5">
-          {/* Tab 1: Weekoverzicht */}
+          {/* Tab 1: Weekoverzicht & Verlof Goedkeuren */}
           <button
             type="button"
             onClick={() => setActiveSubTab('week_overview')}
@@ -1187,7 +1259,12 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
             }`}
           >
             <CalendarRange className="w-4 h-4" />
-            Weekoverzicht & Direct Verlof
+            Weekoverzicht & Verlof Goedkeuren
+            {pendingRequestsCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-400 text-amber-950 ml-0.5">
+                {pendingRequestsCount}
+              </span>
+            )}
           </button>
 
           {/* Tab 2: Maandoverzicht (Kleurlijnen per personeelslid) */}
@@ -1204,26 +1281,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
             Maandoverzicht (Kleurlijnen)
           </button>
 
-          {/* Tab 3: Verlof Goedkeuren (Nieuw tabblad) */}
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('leave_approval')}
-            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-extrabold text-xs transition cursor-pointer shrink-0 relative ${
-              activeSubTab === 'leave_approval'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <CheckSquare className="w-4 h-4" />
-            Verlof Goedkeuren
-            {pendingRequestsCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-400 text-amber-950 ml-0.5">
-                {pendingRequestsCount}
-              </span>
-            )}
-          </button>
-
-          {/* Tab 4: Teller Verplicht Verlof (In apart tabblad) */}
+          {/* Tab 3: Teller Verplicht Verlof (In apart tabblad) */}
           <button
             type="button"
             onClick={() => setActiveSubTab('compulsory_counter')}
@@ -1333,6 +1391,9 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
           onUpdateLeaveStatus={handleUpdateLeaveStatus}
           onDirectSetShiftStatus={handleDirectSetShiftStatus}
           onClearShiftOverride={handleClearShiftOverride}
+          onUpdateNote={handleUpdateLeaveNote}
+          onDeleteRequest={handleDeleteLeaveRequest}
+          onBatchApproveAllPending={handleBatchApproveAllPending}
         />
       )}
 

@@ -6,7 +6,7 @@
 import React, { useMemo, useState } from 'react';
 import { StaffMember, LeaveRequest } from '../../types';
 import { Calendar, Briefcase, TrendingDown, Sparkles } from 'lucide-react';
-import { formatBelgianDate } from '../../services/leaveService';
+import { formatBelgianDate, isLeaveRequestForStaff } from '../../services/leaveService';
 
 interface CompulsoryLeaveCounterSubmoduleProps {
   staffList: StaffMember[];
@@ -17,7 +17,8 @@ export const CompulsoryLeaveCounterSubmodule: React.FC<CompulsoryLeaveCounterSub
   staffList,
   leaveRequests
 }) => {
-  const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
+  // Continuous counter: default to 'all' across all years as requested
+  const [selectedYear, setSelectedYear] = useState<string>('all');
 
   // Filter only nurses
   const nurses = useMemo(
@@ -42,7 +43,13 @@ export const CompulsoryLeaveCounterSubmodule: React.FC<CompulsoryLeaveCounterSub
     return nurses.map(nurse => {
       // Find all compulsory leave & compensated workdays for this nurse (excluding rejected)
       const relevantRequests = leaveRequests.filter(r => {
-        if (r.staff_id !== nurse.id || (r.type !== 'verplicht' && r.type !== 'gecompenseerd') || r.status === 'afgekeurd') {
+        if (!isLeaveRequestForStaff(r, nurse)) {
+          return false;
+        }
+        if (r.type !== 'verplicht' && r.type !== 'gecompenseerd') {
+          return false;
+        }
+        if (r.status === 'afgekeurd') {
           return false;
         }
         if (selectedYear !== 'all' && !r.date.startsWith(selectedYear)) {
@@ -99,7 +106,7 @@ export const CompulsoryLeaveCounterSubmodule: React.FC<CompulsoryLeaveCounterSub
               onChange={e => setSelectedYear(e.target.value)}
               className="bg-transparent focus:outline-none cursor-pointer"
             >
-              <option value="all">Alle Jaren</option>
+              <option value="all">Doorlopend (Alle jaren)</option>
               {availableYears.map(y => (
                 <option key={y} value={y}>
                   Jaar {y}

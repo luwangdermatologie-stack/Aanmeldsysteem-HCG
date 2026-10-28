@@ -22,6 +22,7 @@ import {
   isLeaveRequestForStaff,
   getBelgianHoliday
 } from '../../services/leaveService';
+import { LeaveApprovalSubmodule } from './LeaveApprovalSubmodule';
 import {
   ChevronLeft,
   ChevronRight,
@@ -43,7 +44,8 @@ import {
   ArrowRightLeft,
   Briefcase,
   Info,
-  UserPlus
+  UserPlus,
+  FileText
 } from 'lucide-react';
 
 interface WeekOverviewSubmoduleProps {
@@ -61,11 +63,14 @@ interface WeekOverviewSubmoduleProps {
   onDeleteTodo: (todoId: string) => Promise<void>;
   onRestoreTodo?: (todoId: string) => Promise<void>;
   onDirectSetLeave: (staffId: string, staffName: string, date: string, slot: LeaveSlot, type: LeaveType) => Promise<void>;
-  onDirectCancelLeave: (requestId: string) => Promise<void>;
+  onDirectCancelLeave: (requestId: string, staffId?: string, date?: string, slot?: 'VM' | 'NM' | 'HELE_DAG') => Promise<void>;
   onDirectSwitchLeaveType?: (requestId: string, newType: LeaveType) => Promise<void>;
   onUpdateLeaveStatus?: (requestId: string, newStatus: LeaveStatus, rejectionReason?: string) => Promise<void>;
   onDirectSetShiftStatus?: (staffId: string, date: string, slot: 'VM' | 'NM', status: 'dienst' | 'vrij') => Promise<void> | void;
   onClearShiftOverride?: (staffId: string, date: string, slot: 'VM' | 'NM') => Promise<void> | void;
+  onUpdateNote?: (requestId: string, note: string) => Promise<void>;
+  onDeleteRequest?: (requestId: string) => Promise<void>;
+  onBatchApproveAllPending?: (targetRequestIds?: string[]) => Promise<void>;
 }
 
 export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
@@ -87,7 +92,10 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
   onDirectSwitchLeaveType,
   onUpdateLeaveStatus,
   onDirectSetShiftStatus,
-  onClearShiftOverride
+  onClearShiftOverride,
+  onUpdateNote,
+  onDeleteRequest,
+  onBatchApproveAllPending
 }) => {
   // Current view date anchored on selected week
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -98,6 +106,11 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
   const [commentAuthorId, setCommentAuthorId] = useState<string>(staffList[0]?.id || '');
   const [commentText, setCommentText] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+
+  // Pending count for quick banner and scrolling
+  const pendingRequestsCount = useMemo(() => {
+    return leaveRequests.filter(r => r.status === 'aangevraagd' && r.type !== 'feestdag').length;
+  }, [leaveRequests]);
 
   // Keep commentAuthorId aligned if staffList loads or changes
   React.useEffect(() => {
@@ -376,9 +389,14 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
     const target = activeQuickSlot;
     // 1. Instantly close modal synchronously
     setActiveQuickSlot(null);
-    // 2. Perform removal/reset
+    // 2. Perform removal/reset and guarantee any shift override is cleared
     if (target.currentLeave?.id) {
-      onDirectCancelLeave(target.currentLeave.id).catch(err => console.warn('Cancel leave action error:', err));
+      onDirectCancelLeave(target.currentLeave.id, target.staff.id, target.dateStr, target.slot)
+        .catch(err => console.warn('Cancel leave action error:', err));
+    }
+    if (onClearShiftOverride) {
+      Promise.resolve(onClearShiftOverride(target.staff.id, target.dateStr, target.slot))
+        .catch(err => console.warn('Clear shift override on cancel error:', err));
     }
   };
 
@@ -863,6 +881,21 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
             <span>Bezetting: Minimaal <strong>1 verpleegkundige per arts</strong> per dagdeel</span>
           </div>
 
+          {pendingRequestsCount > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById('verlof-goedkeuren-sectie');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 shadow-xs cursor-pointer animate-pulse"
+              title="Spring direct naar de Verlof Goedkeuren wachtrij hieronder"
+            >
+              <Clock className="w-3.5 h-3.5 text-white" />
+              <span>{pendingRequestsCount} Ter Goedkeuring ↓</span>
+            </button>
+          )}
+
           <div className="flex items-center gap-2 text-xs">
             <label className="text-slate-500 font-bold">Datum:</label>
             <input
@@ -1107,12 +1140,28 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                 </td>
               </tr>
 
-              {nurses.map(nurse => (
-                <tr key={nurse.id} className="hover:bg-slate-50/60 transition">
-                  <td className="p-2 w-[130px] min-w-[120px] max-w-[135px] sticky left-0 z-10 bg-white border-r border-slate-200 shadow-xs">
-                    <div className="font-bold text-slate-800 text-xs truncate" title={nurse.name}>{nurse.name}</div>
-                    <span className="text-[10px] text-emerald-600 font-semibold">Verpleegkundige</span>
-                  </td>
+              {nurses.map(nurse => {
+                const nurseCounter = calculateCompulsoryLeaveCounter(nurse.id, leaveRequests, staffList);
+                return (
+                  <tr key={nurse.id} className="hover:bg-slate-50/60 transition">
+                    <td className="p-2 w-[130px] min-w-[120px] max-w-[135px] sticky left-0 z-10 bg-white border-r border-slate-200 shadow-xs">
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="font-bold text-slate-800 text-xs truncate" title={nurse.name}>{nurse.name}</div>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-black shrink-0 ${
+                            nurseCounter.netApprovedDays > 0
+                              ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                              : nurseCounter.netApprovedDays < 0
+                              ? 'bg-teal-100 text-teal-900 border border-teal-300'
+                              : 'bg-slate-100 text-slate-600 border border-slate-200'
+                          }`}
+                          title={`Teller verplicht verlof (doorlopend): Netto ${nurseCounter.netApprovedDays > 0 ? '+' : ''}${nurseCounter.netApprovedDays}d (${nurseCounter.grossApprovedCompulsoryDays}d verplicht - ${nurseCounter.approvedCompensatedDays}d gecompenseerd)`}
+                        >
+                          {nurseCounter.netApprovedDays > 0 ? `+${nurseCounter.netApprovedDays}d` : `${nurseCounter.netApprovedDays}d`}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-emerald-600 font-semibold">Verpleegkundige</span>
+                    </td>
 
                   {weekInfo.days.map(d => {
                     const vmStatus = getSlotStatus(nurse, d.dayKey, d.dateStr, 'vm');
@@ -1166,7 +1215,8 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                     );
                   })}
                 </tr>
-              ))}
+              );
+            })}
             </tbody>
           </table>
         </div>
@@ -1849,6 +1899,32 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
       )}
 
       {/* End of Quick Action Modal */}
+
+      {/* ========================================================================= */}
+      {/* 5. VERLOF GOEDKEUREN & WACHTRIJ BEHEER (MEER NAAR BENEDEN IN DIT TABBLAD) */}
+      {/* ========================================================================= */}
+      <div id="verlof-goedkeuren-sectie" className="pt-6 border-t-2 border-slate-200/80">
+        <LeaveApprovalSubmodule
+          staffList={staffList}
+          leaveRequests={leaveRequests}
+          comments={comments}
+          todos={todos}
+          shiftOverrides={shiftOverrides}
+          onAddComment={onAddComment}
+          onDeleteComment={onDeleteComment}
+          onRestoreComment={onRestoreComment}
+          onPermanentDeleteComment={onPermanentDeleteComment}
+          onAddTodo={onAddTodo}
+          onToggleTodo={onToggleTodo}
+          onDeleteTodo={onDeleteTodo}
+          onRestoreTodo={onRestoreTodo}
+          onUpdateStatus={onUpdateLeaveStatus || (async () => {})}
+          onUpdateNote={onUpdateNote}
+          onDeleteRequest={onDeleteRequest}
+          onBatchApproveAllPending={onBatchApproveAllPending}
+          embeddedMode={true}
+        />
+      </div>
     </div>
   );
 };

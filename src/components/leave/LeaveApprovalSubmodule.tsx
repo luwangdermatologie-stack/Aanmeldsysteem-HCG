@@ -71,6 +71,7 @@ export interface LeaveApprovalSubmoduleProps {
   onUpdateNote?: (requestId: string, note: string) => Promise<void>;
   onDeleteRequest: (requestId: string) => Promise<void>;
   onBatchApproveAllPending?: (requestIds?: string[]) => Promise<void>;
+  embeddedMode?: boolean;
 }
 
 interface ActiveApprovalModalState {
@@ -108,11 +109,12 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
   onUpdateStatus,
   onUpdateNote,
   onDeleteRequest,
-  onBatchApproveAllPending
+  onBatchApproveAllPending,
+  embeddedMode = false
 }) => {
   // Navigation & View State
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const [viewMode, setViewMode] = useState<'rooster' | 'wachtrij'>('rooster');
+  const [viewMode, setViewMode] = useState<'rooster' | 'wachtrij'>(embeddedMode ? 'wachtrij' : 'rooster');
 
   // Modal States
   const [activeApprovalSlot, setActiveApprovalSlot] = useState<ActiveApprovalModalState | null>(null);
@@ -653,11 +655,12 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
     <div className="space-y-6">
       {/* ========================================================================= */}
       {/* 1. BOVENSTE RIJ: ALGEMENE OPMERKINGEN (LINKS) & TO DO LIJST (RECHTS) */}
-      {/* Herhaald uit het weekoverzicht conform gebruikerswens */}
+      {/* Slechts tonen in standalone modus; niet herhalen in embedded weekoverzicht */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* LINKERHELFT: ALGEMENE OPMERKINGEN */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col h-[400px]">
+      {!embeddedMode && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* LINKERHELFT: ALGEMENE OPMERKINGEN */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col h-[400px]">
           <div className="p-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 rounded-t-2xl shrink-0">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
@@ -1043,440 +1046,202 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
           )}
         </div>
       </div>
+      )}
 
       {/* ========================================================================= */}
-      {/* 2. VERLOF GOEDKEUREN ROOSTER NAVIGATIEBALK */}
-      {/* Identieke layout met extra status indicatoren en weergave-opties */}
+      {/* 2. VERLOF GOEDKEUREN KOPTEKST / NAVIGATIEBALK */}
       {/* ========================================================================= */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-4">
-        {/* Navigation & Title */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-            <button
-              type="button"
-              onClick={goToPreviousWeek}
-              className="p-1.5 hover:bg-white rounded-lg text-slate-700 transition cursor-pointer"
-              title="Vorige week"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={goToToday}
-              className="px-3 py-1 text-xs font-bold text-slate-700 hover:bg-white rounded-lg transition cursor-pointer"
-            >
-              Vandaag
-            </button>
-            <button
-              type="button"
-              onClick={goToNextWeek}
-              className="p-1.5 hover:bg-white rounded-lg text-slate-700 transition cursor-pointer"
-              title="Volgende week"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-indigo-600" />
-            <span className="font-extrabold text-slate-800 text-base tracking-tight">
-              Week {weekInfo.weekNumber}{' '}
-              <span className="text-slate-500 font-normal text-sm">({weekInfo.formattedRange})</span>
-            </span>
-          </div>
-        </div>
-
-        {/* View Switcher & Approval Quick Counts */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Quick status chips */}
-          <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200 text-xs">
-            <span
-              className={`px-2 py-0.5 rounded-lg font-bold flex items-center gap-1 ${
-                pendingCount > 0 ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'text-slate-600'
-              }`}
-              title="Aanvragen wachtend op goedkeuring"
-            >
-              <Clock className="w-3 h-3 text-amber-600" />
-              {pendingCount} Wachtend
-            </span>
-
-            <span
-              className={`px-2 py-0.5 rounded-lg font-bold flex items-center gap-1 ${
-                onHoldCount > 0 ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'text-slate-600'
-              }`}
-              title="Aanvragen in beraad / on hold"
-            >
-              <PauseCircle className="w-3 h-3 text-purple-600" />
-              {onHoldCount} On Hold
-            </span>
-
-            <span
-              className="px-2 py-0.5 rounded-lg font-bold flex items-center gap-1 text-emerald-800 bg-emerald-50 border border-emerald-200"
-              title="Reeds goedgekeurde verlofaanvragen"
-            >
-              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-              {approvedCount} Goedgekeurd
-            </span>
-          </div>
-
-          {/* Batch Approve Week */}
-          {weekPendingRequests.length > 0 && (
-            <button
-              type="button"
-              onClick={handleApproveAllInCurrentWeek}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-              title={`Keur alle ${weekPendingRequests.length} aanvragen van Week ${weekInfo.weekNumber} goed`}
-            >
-              <CheckCheck className="w-3.5 h-3.5" />
-              <span>Keur Week {weekInfo.weekNumber} Goed ({weekPendingRequests.length})</span>
-            </button>
-          )}
-
-          {/* Weergave Toggle: Weekrooster vs Wachtrij Lijst */}
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
-            <button
-              type="button"
-              onClick={() => setViewMode('rooster')}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                viewMode === 'rooster' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <CalendarDays className="w-3.5 h-3.5" />
-              Weekrooster
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('wachtrij')}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                viewMode === 'wachtrij' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <FileText className="w-3.5 h-3.5" />
-              Wachtrij Lijst
-              {pendingCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-amber-400 text-amber-950">
-                  {pendingCount}
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* Datepicker Jump */}
-          <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
-            <span className="text-xs text-slate-500 font-semibold">Spring naar:</span>
-            <input
-              type="date"
-              onChange={handleJumpToDate}
-              className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 3. ROOSTER WEERGAVE (IDENTIEK AAN WEEKOVERZICHT MET DIRECTE GOEDKEUR-ACTIES) */}
-      {/* ========================================================================= */}
-      {viewMode === 'rooster' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          {/* Table Legend (Identiek aan Weekoverzicht) */}
-          <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3 text-xs">
-            <div className="flex items-center gap-4 flex-wrap">
-              <span className="font-bold text-slate-700 text-xs">Legende:</span>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-emerald-100 border border-emerald-300"></span>
-                <span className="text-slate-600 text-[11px]">Dienst (Aanwezig)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-indigo-50 border-2 border-dashed border-indigo-400"></span>
-                <span className="text-slate-600 text-[11px]">Verlof (In Aanvraag)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-indigo-100 border border-indigo-300"></span>
-                <span className="text-slate-600 text-[11px]">Verlof (Goedgekeurd)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-amber-50 border-2 border-dashed border-amber-400"></span>
-                <span className="text-slate-600 text-[11px]">Verplicht (In Aanvraag)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-amber-100 border border-amber-300"></span>
-                <span className="text-slate-600 text-[11px]">Verplicht (Goedgekeurd)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-red-50 border border-red-300"></span>
-                <span className="text-slate-600 text-[11px]">Afgekeurd</span>
-              </div>
+      {embeddedMode ? (
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+              <CheckSquare className="w-5 h-5" />
             </div>
-            <div className="flex items-center gap-2 text-slate-500 text-[11px] font-medium">
-              <span>💡 <strong>Rechtstreeks goed- of afkeuren:</strong> klik op ✓ of ✕ in het vakje, of klik op het vakje voor alle opties</span>
+            <div>
+              <h2 className="text-base font-extrabold text-slate-800">
+                Verlof Goedkeuren & Wachtrij Beheer
+              </h2>
+              <p className="text-xs text-slate-500">
+                Beoordeel, keur direct goed of wijs verlofaanvragen af met verplichte reden
+              </p>
             </div>
           </div>
 
-          {/* Matrix Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[760px] md:min-w-full">
-              <thead>
-                {/* Top Row: Days with Ratio check (Red header if shortage) */}
-                <tr className="border-b border-slate-200 text-xs font-bold text-slate-700">
-                  <th className="p-2.5 w-[130px] min-w-[120px] max-w-[135px] bg-slate-200/60 sticky left-0 z-20">
-                    Personeelslid
-                  </th>
-                  {weekInfo.days.map(d => {
-                    const dayStat = slotStaffingStats[d.dateStr];
-                    const hasShortage = dayStat?.dayHasShortage ?? false;
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200 text-xs">
+              <span
+                className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 ${
+                  pendingCount > 0 ? 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse' : 'text-slate-600'
+                }`}
+                title="Aanvragen wachtend op goedkeuring"
+              >
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                {pendingCount} Wachtend
+              </span>
 
-                    return (
-                      <th
-                        key={d.dateStr}
-                        colSpan={2}
-                        className={`p-2 text-center border-l transition-colors ${
-                          hasShortage
-                            ? 'bg-red-600 text-white border-red-700 shadow-inner'
-                            : d.isHoliday
-                            ? 'bg-rose-50 text-rose-950 border-rose-200'
-                            : 'bg-slate-100/90 text-slate-800 border-slate-200'
-                        }`}
-                      >
-                        <div className="flex items-center justify-center gap-1">
-                          {hasShortage && (
-                            <AlertTriangle className="w-3.5 h-3.5 text-yellow-300 animate-bounce" />
-                          )}
-                          <span className={`font-black text-xs ${
-                            hasShortage ? 'text-white' : d.isHoliday ? 'text-rose-900' : 'text-slate-800'
-                          }`}>
-                            {d.label}
-                          </span>
-                        </div>
-                        <div className={`text-[11px] font-normal ${
-                          hasShortage ? 'text-red-100 font-semibold' : d.isHoliday ? 'text-rose-700 font-semibold' : 'text-slate-500'
-                        }`}>
-                          {d.formattedDate}
-                        </div>
-                        {hasShortage && (
-                          <div className="mt-0.5 inline-block px-1.5 py-0.2 bg-red-800/90 text-white rounded text-[9px] font-black tracking-tight">
-                            TEKORT VERPLEGING
-                          </div>
-                        )}
-                        {d.isHoliday && (
-                          <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 bg-rose-100/90 text-rose-800 border border-rose-200 rounded text-[9px] font-black tracking-tight">
-                            <span>🇧🇪</span>
-                            <span>{d.holidayName || 'Feestdag'}</span>
-                          </div>
-                        )}
-                      </th>
-                    );
-                  })}
-                </tr>
+              <span
+                className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 ${
+                  onHoldCount > 0 ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'text-slate-600'
+                }`}
+                title="Aanvragen in beraad / on hold"
+              >
+                <PauseCircle className="w-3.5 h-3.5 text-purple-600" />
+                {onHoldCount} On Hold
+              </span>
 
-                {/* Second Row: VM / NM Sub-headers with Ratio status in RED if slot deficient */}
-                <tr className="border-b border-slate-200 text-[10px] font-bold text-center uppercase tracking-wider">
-                  <th className="p-1.5 w-[130px] min-w-[120px] max-w-[135px] sticky left-0 z-20 bg-slate-100 border-r border-slate-200 text-slate-600">
-                    Dagdeel
-                  </th>
-                  {weekInfo.days.map(d => {
-                    const dayStat = slotStaffingStats[d.dateStr];
-                    const vmShortage = dayStat?.vm?.isShortage;
-                    const nmShortage = dayStat?.nm?.isShortage;
+              <span
+                className="px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 text-emerald-800 bg-emerald-50 border border-emerald-200"
+                title="Reeds goedgekeurde verlofaanvragen"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                {approvedCount} Goedgekeurd
+              </span>
+            </div>
 
-                    return (
-                      <React.Fragment key={`sub-${d.dateStr}`}>
-                        {/* VM Header */}
-                        <th
-                          className={`p-1 border-l w-[8.7%] min-w-[48px] transition-colors ${
-                            vmShortage
-                              ? 'bg-red-500 text-white font-black border-red-600'
-                              : 'bg-slate-50/90 text-slate-600 border-slate-200'
-                          }`}
-                          title={
-                            vmShortage
-                              ? `⚠️ TEKORT: ${dayStat?.vm?.doctors} artsen vs ${dayStat?.vm?.nurses} verpleegkundigen!`
-                              : `VM bezetting: ${dayStat?.vm?.doctors} artsen en ${dayStat?.vm?.nurses} verpleegkundigen`
-                          }
-                        >
-                          VM
-                          {vmShortage && (
-                            <span className="block text-[8px] leading-none font-bold text-yellow-200 mt-0.5">
-                              {dayStat?.vm?.doctors}A vs {dayStat?.vm?.nurses}V
-                            </span>
-                          )}
-                        </th>
+            {onBatchApproveAllPending && pendingCount > 0 && (
+              <button
+                type="button"
+                onClick={() => onBatchApproveAllPending()}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="Keur alle openstaande aanvragen in 1 klik goed"
+              >
+                <CheckCheck className="w-4 h-4" />
+                <span>Alles Goedkeuren ({pendingCount})</span>
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-4">
+          {/* Navigation & Title */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={goToPreviousWeek}
+                className="p-1.5 hover:bg-white rounded-lg text-slate-700 transition cursor-pointer"
+                title="Vorige week"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={goToToday}
+                className="px-3 py-1 text-xs font-bold text-slate-700 hover:bg-white rounded-lg transition cursor-pointer"
+              >
+                Vandaag
+              </button>
+              <button
+                type="button"
+                onClick={goToNextWeek}
+                className="p-1.5 hover:bg-white rounded-lg text-slate-700 transition cursor-pointer"
+                title="Volgende week"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
 
-                        {/* NM Header */}
-                        <th
-                          className={`p-1 border-l w-[8.7%] min-w-[48px] transition-colors ${
-                            nmShortage
-                              ? 'bg-red-500 text-white font-black border-red-600'
-                              : 'bg-slate-50/90 text-slate-600 border-slate-100'
-                          }`}
-                          title={
-                            nmShortage
-                              ? `⚠️ TEKORT: ${dayStat?.nm?.doctors} artsen vs ${dayStat?.nm?.nurses} verpleegkundigen!`
-                              : `NM bezetting: ${dayStat?.nm?.doctors} artsen en ${dayStat?.nm?.nurses} verpleegkundigen`
-                          }
-                        >
-                          NM
-                          {nmShortage && (
-                            <span className="block text-[8px] leading-none font-bold text-yellow-200 mt-0.5">
-                              {dayStat?.nm?.doctors}A vs {dayStat?.nm?.nurses}V
-                            </span>
-                          )}
-                        </th>
-                      </React.Fragment>
-                    );
-                  })}
-                </tr>
-              </thead>
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-indigo-600" />
+              <span className="font-extrabold text-slate-800 text-base tracking-tight">
+                Week {weekInfo.weekNumber}{' '}
+                <span className="text-slate-500 font-normal text-sm">({weekInfo.formattedRange})</span>
+              </span>
+            </div>
+          </div>
 
-              <tbody className="divide-y divide-slate-200 text-xs">
-                {/* ------------------------------------------------------------- */}
-                {/* SECTIE 1: ARTSEN */}
-                {/* ------------------------------------------------------------- */}
-                <tr className="bg-blue-50/50 font-extrabold text-blue-900 border-t border-b border-blue-100">
-                  <td colSpan={11} className="py-2 px-3 text-xs flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                    Artsen (Dokters) — ({doctors.length})
-                  </td>
-                </tr>
+          {/* View Switcher & Approval Quick Counts */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Quick status chips */}
+            <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200 text-xs">
+              <span
+                className={`px-2 py-0.5 rounded-lg font-bold flex items-center gap-1 ${
+                  pendingCount > 0 ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'text-slate-600'
+                }`}
+                title="Aanvragen wachtend op goedkeuring"
+              >
+                <Clock className="w-3 h-3 text-amber-600" />
+                {pendingCount} Wachtend
+              </span>
 
-                {doctors.map(doctor => (
-                  <tr key={doctor.id} className="hover:bg-slate-50/60 transition">
-                    <td className="p-2 w-[130px] min-w-[120px] max-w-[135px] sticky left-0 z-10 bg-white border-r border-slate-200 shadow-xs">
-                      <div className="font-bold text-slate-800 text-xs truncate" title={doctor.name}>
-                        {doctor.name}
-                      </div>
-                      <span className="text-[10px] text-blue-600 font-semibold">Arts</span>
-                    </td>
+              <span
+                className={`px-2 py-0.5 rounded-lg font-bold flex items-center gap-1 ${
+                  onHoldCount > 0 ? 'bg-purple-100 text-purple-900 border border-purple-300' : 'text-slate-600'
+                }`}
+                title="Aanvragen in beraad / on hold"
+              >
+                <PauseCircle className="w-3 h-3 text-purple-600" />
+                {onHoldCount} On Hold
+              </span>
 
-                    {weekInfo.days.map(d => {
-                      const vmStatus = getSlotStatus(doctor, d.dayKey, d.dateStr, 'vm');
-                      const nmStatus = getSlotStatus(doctor, d.dayKey, d.dateStr, 'nm');
+              <span
+                className="px-2 py-0.5 rounded-lg font-bold flex items-center gap-1 text-emerald-800 bg-emerald-50 border border-emerald-200"
+                title="Reeds goedgekeurde verlofaanvragen"
+              >
+                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                {approvedCount} Goedgekeurd
+              </span>
+            </div>
 
-                      return (
-                        <React.Fragment key={`${doctor.id}-${d.dateStr}`}>
-                          {/* VM CELL */}
-                          <td className="p-1 border-l border-slate-200 text-center align-middle">
-                            <ApprovalScheduleSlotCell
-                              status={vmStatus}
-                              staff={doctor}
-                              onDirectApprove={handleDirectApprove}
-                              onDirectReject={handleDirectReject}
-                              onClick={() =>
-                                handleOpenApprovalModal(
-                                  doctor,
-                                  d.dayKey,
-                                  d.dateStr,
-                                  vmStatus.leaveRequest?.slot === 'HELE_DAG' ? 'HELE_DAG' : 'VM',
-                                  d.label,
-                                  d.formattedDate
-                                )
-                              }
-                            />
-                          </td>
+            {/* Batch Approve Week */}
+            {weekPendingRequests.length > 0 && (
+              <button
+                type="button"
+                onClick={handleApproveAllInCurrentWeek}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title={`Keur alle ${weekPendingRequests.length} aanvragen van Week ${weekInfo.weekNumber} goed`}
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+                <span>Keur Week {weekInfo.weekNumber} Goed ({weekPendingRequests.length})</span>
+              </button>
+            )}
 
-                          {/* NM CELL */}
-                          <td className="p-1 border-l border-slate-100 text-center align-middle">
-                            <ApprovalScheduleSlotCell
-                              status={nmStatus}
-                              staff={doctor}
-                              onDirectApprove={handleDirectApprove}
-                              onDirectReject={handleDirectReject}
-                              onClick={() =>
-                                handleOpenApprovalModal(
-                                  doctor,
-                                  d.dayKey,
-                                  d.dateStr,
-                                  nmStatus.leaveRequest?.slot === 'HELE_DAG' ? 'HELE_DAG' : 'NM',
-                                  d.label,
-                                  d.formattedDate
-                                )
-                              }
-                            />
-                          </td>
-                        </React.Fragment>
-                      );
-                    })}
-                  </tr>
-                ))}
+            {/* Weergave Toggle: Weekrooster vs Wachtrij Lijst */}
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setViewMode('rooster')}
+                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === 'rooster' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <CalendarDays className="w-3.5 h-3.5" />
+                Weekrooster
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('wachtrij')}
+                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === 'wachtrij' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Wachtrij Lijst
+                {pendingCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-amber-400 text-amber-950">
+                    {pendingCount}
+                  </span>
+                )}
+              </button>
+            </div>
 
-                {/* ------------------------------------------------------------- */}
-                {/* SECTIE 2: VERPLEEGKUNDIGEN */}
-                {/* ------------------------------------------------------------- */}
-                <tr className="bg-emerald-50/50 font-extrabold text-emerald-900 border-t border-b border-emerald-100">
-                  <td colSpan={11} className="py-2 px-3 text-xs flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
-                    Verpleegkundigen — ({nurses.length})
-                  </td>
-                </tr>
-
-                {nurses.map(nurse => (
-                  <tr key={nurse.id} className="hover:bg-slate-50/60 transition">
-                    <td className="p-2 w-[130px] min-w-[120px] max-w-[135px] sticky left-0 z-10 bg-white border-r border-slate-200 shadow-xs">
-                      <div className="font-bold text-slate-800 text-xs truncate" title={nurse.name}>
-                        {nurse.name}
-                      </div>
-                      <span className="text-[10px] text-emerald-600 font-semibold">Verpleegkundige</span>
-                    </td>
-
-                    {weekInfo.days.map(d => {
-                      const vmStatus = getSlotStatus(nurse, d.dayKey, d.dateStr, 'vm');
-                      const nmStatus = getSlotStatus(nurse, d.dayKey, d.dateStr, 'nm');
-
-                      return (
-                        <React.Fragment key={`${nurse.id}-${d.dateStr}`}>
-                          {/* VM CELL */}
-                          <td className="p-1 border-l border-slate-200 text-center align-middle">
-                            <ApprovalScheduleSlotCell
-                              status={vmStatus}
-                              staff={nurse}
-                              onDirectApprove={handleDirectApprove}
-                              onDirectReject={handleDirectReject}
-                              onClick={() =>
-                                handleOpenApprovalModal(
-                                  nurse,
-                                  d.dayKey,
-                                  d.dateStr,
-                                  vmStatus.leaveRequest?.slot === 'HELE_DAG' ? 'HELE_DAG' : 'VM',
-                                  d.label,
-                                  d.formattedDate
-                                )
-                              }
-                            />
-                          </td>
-
-                          {/* NM CELL */}
-                          <td className="p-1 border-l border-slate-100 text-center align-middle">
-                            <ApprovalScheduleSlotCell
-                              status={nmStatus}
-                              staff={nurse}
-                              onDirectApprove={handleDirectApprove}
-                              onDirectReject={handleDirectReject}
-                              onClick={() =>
-                                handleOpenApprovalModal(
-                                  nurse,
-                                  d.dayKey,
-                                  d.dateStr,
-                                  nmStatus.leaveRequest?.slot === 'HELE_DAG' ? 'HELE_DAG' : 'NM',
-                                  d.label,
-                                  d.formattedDate
-                                )
-                              }
-                            />
-                          </td>
-                        </React.Fragment>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {/* Datepicker Jump */}
+            <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
+              <span className="text-xs text-slate-500 font-semibold">Spring naar:</span>
+              <input
+                type="date"
+                onChange={handleJumpToDate}
+                className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+              />
+            </div>
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 4. WACHTRIJ LIJST WEERGAVE (ALTERNATIVE COMPACT LIST) */}
+      {/* 3. WACHTRIJ LIJST WEERGAVE */}
       {/* ========================================================================= */}
-      {viewMode === 'wachtrij' && (
+      {(embeddedMode || viewMode === 'wachtrij') && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-4">
           {/* Filter Bar */}
           <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 border-b border-slate-100 pb-3">
@@ -1785,6 +1550,372 @@ export const LeaveApprovalSubmodule: React.FC<LeaveApprovalSubmoduleProps> = ({
         </div>
       )}
 
+
+      {/* ========================================================================= */}
+      {/* 4. ROOSTER WEERGAVE MET DIRECTE GOEDKEUR-ACTIES (✓ EN ✕) ONDER DE WACHTRIJ */}
+      {/* ========================================================================= */}
+      {(embeddedMode || viewMode === 'rooster' || viewMode === 'wachtrij') && (
+        <div className="space-y-3">
+          {/* Week Navigatiebalk voor het Goedkeur-Rooster */}
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={goToPreviousWeek}
+                  className="p-1.5 hover:bg-white rounded-lg text-slate-700 transition cursor-pointer"
+                  title="Vorige week"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={goToToday}
+                  className="px-3 py-1 text-xs font-bold text-slate-700 hover:bg-white rounded-lg transition cursor-pointer"
+                >
+                  Vandaag
+                </button>
+                <button
+                  type="button"
+                  onClick={goToNextWeek}
+                  className="p-1.5 hover:bg-white rounded-lg text-slate-700 transition cursor-pointer"
+                  title="Volgende week"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-indigo-600" />
+                <span className="font-extrabold text-slate-800 text-sm tracking-tight">
+                  Week {weekInfo.weekNumber}{' ' }
+                  <span className="text-slate-500 font-normal text-xs">({weekInfo.formattedRange})</span>
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Batch Approve Week */}
+              {weekPendingRequests.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleApproveAllInCurrentWeek}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  title={`Keur alle ${weekPendingRequests.length} aanvragen van Week ${weekInfo.weekNumber} goed`}
+                >
+                  <CheckCheck className="w-3.5 h-3.5" />
+                  <span>Keur Week {weekInfo.weekNumber} Goed ({weekPendingRequests.length})</span>
+                </button>
+              )}
+
+              {/* Datepicker Jump */}
+              <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2.5">
+                <span className="text-xs text-slate-500 font-semibold">Spring naar:</span>
+                <input
+                  type="date"
+                  onChange={handleJumpToDate}
+                  className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                />
+              </div>
+            </div>
+          </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          {/* Table Legend (Identiek aan Weekoverzicht) */}
+          <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3 text-xs">
+            <div className="flex items-center gap-4 flex-wrap">
+              <span className="font-bold text-slate-700 text-xs">Legende:</span>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-emerald-100 border border-emerald-300"></span>
+                <span className="text-slate-600 text-[11px]">Dienst (Aanwezig)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-indigo-50 border-2 border-dashed border-indigo-400"></span>
+                <span className="text-slate-600 text-[11px]">Verlof (In Aanvraag)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-indigo-100 border border-indigo-300"></span>
+                <span className="text-slate-600 text-[11px]">Verlof (Goedgekeurd)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-amber-50 border-2 border-dashed border-amber-400"></span>
+                <span className="text-slate-600 text-[11px]">Verplicht (In Aanvraag)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-amber-100 border border-amber-300"></span>
+                <span className="text-slate-600 text-[11px]">Verplicht (Goedgekeurd)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-red-50 border border-red-300"></span>
+                <span className="text-slate-600 text-[11px]">Afgekeurd</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-slate-500 text-[11px] font-medium">
+              <span>💡 <strong>Rechtstreeks goed- of afkeuren:</strong> klik op ✓ of ✕ in het vakje, of klik op het vakje voor alle opties</span>
+            </div>
+          </div>
+
+          {/* Matrix Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[760px] md:min-w-full">
+              <thead>
+                {/* Top Row: Days with Ratio check (Red header if shortage) */}
+                <tr className="border-b border-slate-200 text-xs font-bold text-slate-700">
+                  <th className="p-2.5 w-[130px] min-w-[120px] max-w-[135px] bg-slate-200/60 sticky left-0 z-20">
+                    Personeelslid
+                  </th>
+                  {weekInfo.days.map(d => {
+                    const dayStat = slotStaffingStats[d.dateStr];
+                    const hasShortage = dayStat?.dayHasShortage ?? false;
+
+                    return (
+                      <th
+                        key={d.dateStr}
+                        colSpan={2}
+                        className={`p-2 text-center border-l transition-colors ${
+                          hasShortage
+                            ? 'bg-red-600 text-white border-red-700 shadow-inner'
+                            : d.isHoliday
+                            ? 'bg-rose-50 text-rose-950 border-rose-200'
+                            : 'bg-slate-100/90 text-slate-800 border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-center gap-1">
+                          {hasShortage && (
+                            <AlertTriangle className="w-3.5 h-3.5 text-yellow-300 animate-bounce" />
+                          )}
+                          <span className={`font-black text-xs ${
+                            hasShortage ? 'text-white' : d.isHoliday ? 'text-rose-900' : 'text-slate-800'
+                          }`}>
+                            {d.label}
+                          </span>
+                        </div>
+                        <div className={`text-[11px] font-normal ${
+                          hasShortage ? 'text-red-100 font-semibold' : d.isHoliday ? 'text-rose-700 font-semibold' : 'text-slate-500'
+                        }`}>
+                          {d.formattedDate}
+                        </div>
+                        {hasShortage && (
+                          <div className="mt-0.5 inline-block px-1.5 py-0.2 bg-red-800/90 text-white rounded text-[9px] font-black tracking-tight">
+                            TEKORT VERPLEGING
+                          </div>
+                        )}
+                        {d.isHoliday && (
+                          <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 bg-rose-100/90 text-rose-800 border border-rose-200 rounded text-[9px] font-black tracking-tight">
+                            <span>🇧🇪</span>
+                            <span>{d.holidayName || 'Feestdag'}</span>
+                          </div>
+                        )}
+                      </th>
+                    );
+                  })}
+                </tr>
+
+                {/* Second Row: VM / NM Sub-headers with Ratio status in RED if slot deficient */}
+                <tr className="border-b border-slate-200 text-[10px] font-bold text-center uppercase tracking-wider">
+                  <th className="p-1.5 w-[130px] min-w-[120px] max-w-[135px] sticky left-0 z-20 bg-slate-100 border-r border-slate-200 text-slate-600">
+                    Dagdeel
+                  </th>
+                  {weekInfo.days.map(d => {
+                    const dayStat = slotStaffingStats[d.dateStr];
+                    const vmShortage = dayStat?.vm?.isShortage;
+                    const nmShortage = dayStat?.nm?.isShortage;
+
+                    return (
+                      <React.Fragment key={`sub-${d.dateStr}`}>
+                        {/* VM Header */}
+                        <th
+                          className={`p-1 border-l w-[8.7%] min-w-[48px] transition-colors ${
+                            vmShortage
+                              ? 'bg-red-500 text-white font-black border-red-600'
+                              : 'bg-slate-50/90 text-slate-600 border-slate-200'
+                          }`}
+                          title={
+                            vmShortage
+                              ? `⚠️ TEKORT: ${dayStat?.vm?.doctors} artsen vs ${dayStat?.vm?.nurses} verpleegkundigen!`
+                              : `VM bezetting: ${dayStat?.vm?.doctors} artsen en ${dayStat?.vm?.nurses} verpleegkundigen`
+                          }
+                        >
+                          VM
+                          {vmShortage && (
+                            <span className="block text-[8px] leading-none font-bold text-yellow-200 mt-0.5">
+                              {dayStat?.vm?.doctors}A vs {dayStat?.vm?.nurses}V
+                            </span>
+                          )}
+                        </th>
+
+                        {/* NM Header */}
+                        <th
+                          className={`p-1 border-l w-[8.7%] min-w-[48px] transition-colors ${
+                            nmShortage
+                              ? 'bg-red-500 text-white font-black border-red-600'
+                              : 'bg-slate-50/90 text-slate-600 border-slate-100'
+                          }`}
+                          title={
+                            nmShortage
+                              ? `⚠️ TEKORT: ${dayStat?.nm?.doctors} artsen vs ${dayStat?.nm?.nurses} verpleegkundigen!`
+                              : `NM bezetting: ${dayStat?.nm?.doctors} artsen en ${dayStat?.nm?.nurses} verpleegkundigen`
+                          }
+                        >
+                          NM
+                          {nmShortage && (
+                            <span className="block text-[8px] leading-none font-bold text-yellow-200 mt-0.5">
+                              {dayStat?.nm?.doctors}A vs {dayStat?.nm?.nurses}V
+                            </span>
+                          )}
+                        </th>
+                      </React.Fragment>
+                    );
+                  })}
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-200 text-xs">
+                {/* ------------------------------------------------------------- */}
+                {/* SECTIE 1: ARTSEN */}
+                {/* ------------------------------------------------------------- */}
+                <tr className="bg-blue-50/50 font-extrabold text-blue-900 border-t border-b border-blue-100">
+                  <td colSpan={11} className="py-2 px-3 text-xs flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                    Artsen (Dokters) — ({doctors.length})
+                  </td>
+                </tr>
+
+                {doctors.map(doctor => (
+                  <tr key={doctor.id} className="hover:bg-slate-50/60 transition">
+                    <td className="p-2 w-[130px] min-w-[120px] max-w-[135px] sticky left-0 z-10 bg-white border-r border-slate-200 shadow-xs">
+                      <div className="font-bold text-slate-800 text-xs truncate" title={doctor.name}>
+                        {doctor.name}
+                      </div>
+                      <span className="text-[10px] text-blue-600 font-semibold">Arts</span>
+                    </td>
+
+                    {weekInfo.days.map(d => {
+                      const vmStatus = getSlotStatus(doctor, d.dayKey, d.dateStr, 'vm');
+                      const nmStatus = getSlotStatus(doctor, d.dayKey, d.dateStr, 'nm');
+
+                      return (
+                        <React.Fragment key={`${doctor.id}-${d.dateStr}`}>
+                          {/* VM CELL */}
+                          <td className="p-1 border-l border-slate-200 text-center align-middle">
+                            <ApprovalScheduleSlotCell
+                              status={vmStatus}
+                              staff={doctor}
+                              onDirectApprove={handleDirectApprove}
+                              onDirectReject={handleDirectReject}
+                              onClick={() =>
+                                handleOpenApprovalModal(
+                                  doctor,
+                                  d.dayKey,
+                                  d.dateStr,
+                                  vmStatus.leaveRequest?.slot === 'HELE_DAG' ? 'HELE_DAG' : 'VM',
+                                  d.label,
+                                  d.formattedDate
+                                )
+                              }
+                            />
+                          </td>
+
+                          {/* NM CELL */}
+                          <td className="p-1 border-l border-slate-100 text-center align-middle">
+                            <ApprovalScheduleSlotCell
+                              status={nmStatus}
+                              staff={doctor}
+                              onDirectApprove={handleDirectApprove}
+                              onDirectReject={handleDirectReject}
+                              onClick={() =>
+                                handleOpenApprovalModal(
+                                  doctor,
+                                  d.dayKey,
+                                  d.dateStr,
+                                  nmStatus.leaveRequest?.slot === 'HELE_DAG' ? 'HELE_DAG' : 'NM',
+                                  d.label,
+                                  d.formattedDate
+                                )
+                              }
+                            />
+                          </td>
+                        </React.Fragment>
+                      );
+                    })}
+                  </tr>
+                ))}
+
+                {/* ------------------------------------------------------------- */}
+                {/* SECTIE 2: VERPLEEGKUNDIGEN */}
+                {/* ------------------------------------------------------------- */}
+                <tr className="bg-emerald-50/50 font-extrabold text-emerald-900 border-t border-b border-emerald-100">
+                  <td colSpan={11} className="py-2 px-3 text-xs flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+                    Verpleegkundigen — ({nurses.length})
+                  </td>
+                </tr>
+
+                {nurses.map(nurse => (
+                  <tr key={nurse.id} className="hover:bg-slate-50/60 transition">
+                    <td className="p-2 w-[130px] min-w-[120px] max-w-[135px] sticky left-0 z-10 bg-white border-r border-slate-200 shadow-xs">
+                      <div className="font-bold text-slate-800 text-xs truncate" title={nurse.name}>
+                        {nurse.name}
+                      </div>
+                      <span className="text-[10px] text-emerald-600 font-semibold">Verpleegkundige</span>
+                    </td>
+
+                    {weekInfo.days.map(d => {
+                      const vmStatus = getSlotStatus(nurse, d.dayKey, d.dateStr, 'vm');
+                      const nmStatus = getSlotStatus(nurse, d.dayKey, d.dateStr, 'nm');
+
+                      return (
+                        <React.Fragment key={`${nurse.id}-${d.dateStr}`}>
+                          {/* VM CELL */}
+                          <td className="p-1 border-l border-slate-200 text-center align-middle">
+                            <ApprovalScheduleSlotCell
+                              status={vmStatus}
+                              staff={nurse}
+                              onDirectApprove={handleDirectApprove}
+                              onDirectReject={handleDirectReject}
+                              onClick={() =>
+                                handleOpenApprovalModal(
+                                  nurse,
+                                  d.dayKey,
+                                  d.dateStr,
+                                  vmStatus.leaveRequest?.slot === 'HELE_DAG' ? 'HELE_DAG' : 'VM',
+                                  d.label,
+                                  d.formattedDate
+                                )
+                              }
+                            />
+                          </td>
+
+                          {/* NM CELL */}
+                          <td className="p-1 border-l border-slate-100 text-center align-middle">
+                            <ApprovalScheduleSlotCell
+                              status={nmStatus}
+                              staff={nurse}
+                              onDirectApprove={handleDirectApprove}
+                              onDirectReject={handleDirectReject}
+                              onClick={() =>
+                                handleOpenApprovalModal(
+                                  nurse,
+                                  d.dayKey,
+                                  d.dateStr,
+                                  nmStatus.leaveRequest?.slot === 'HELE_DAG' ? 'HELE_DAG' : 'NM',
+                                  d.label,
+                                  d.formattedDate
+                                )
+                              }
+                            />
+                          </td>
+                        </React.Fragment>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    )}
       {/* ========================================================================= */}
       {/* 5. MODAL: VERLOF GOEDKEUREN & PLANNING ACTIES (INSTANT SLUITEND) */}
       {/* ========================================================================= */}

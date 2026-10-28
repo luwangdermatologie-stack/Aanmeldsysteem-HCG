@@ -284,12 +284,16 @@ export function isDummyLeaveRequest(req: Partial<LeaveRequest>): boolean {
  * Flexible matching between a LeaveRequest and a StaffMember.
  * Accounts for ID prefixes ('staff-'), activeStaffId, and staff names.
  */
-export function isLeaveRequestForStaff(req: LeaveRequest, staff: StaffMember): boolean {
+export function isLeaveRequestForStaff(req: LeaveRequest, staff: StaffMember | string): boolean {
   if (!req || !staff) return false;
-  if (req.staff_id === staff.id) return true;
-  if (staff.activeStaffId && req.staff_id === staff.activeStaffId) return true;
-  if (req.staff_id && req.staff_id.replace(/^staff-/, '') === staff.id.replace(/^staff-/, '')) return true;
-  if (req.staff_name && staff.name && req.staff_name.trim().toLowerCase() === staff.name.trim().toLowerCase()) return true;
+  const staffId = typeof staff === 'string' ? staff : staff.id;
+  const staffName = typeof staff === 'string' ? undefined : staff.name;
+  const activeStaffId = typeof staff === 'string' ? undefined : staff.activeStaffId;
+
+  if (req.staff_id === staffId) return true;
+  if (activeStaffId && req.staff_id === activeStaffId) return true;
+  if (req.staff_id && req.staff_id.replace(/^staff-/, '') === staffId.replace(/^staff-/, '')) return true;
+  if (staffName && req.staff_name && req.staff_name.trim().toLowerCase() === staffName.trim().toLowerCase()) return true;
   return false;
 }
 
@@ -771,8 +775,14 @@ export function validateLeaveRequest(
  * Calculates compulsory leave counter for a nurse across all approved records.
  * Gecompenseerde werkdagen worden afgetrokken van deze verplicht verlof teller.
  */
-export function calculateCompulsoryLeaveCounter(staffId: string, requests: LeaveRequest[]) {
-  const staffRequests = requests.filter(r => r.staff_id === staffId);
+export function calculateCompulsoryLeaveCounter(staffId: string, requests: LeaveRequest[], staffList?: StaffMember[]) {
+  const staff = staffList?.find(s => s.id === staffId);
+  const staffRequests = requests.filter(r => {
+    if (staff) return isLeaveRequestForStaff(r, staff);
+    if (r.staff_id === staffId) return true;
+    if (r.staff_id && staffId && r.staff_id.replace(/^staff-/, '') === staffId.replace(/^staff-/, '')) return true;
+    return false;
+  });
   const compulsoryRequests = staffRequests.filter(r => r.type === 'verplicht');
   const compensatedRequests = staffRequests.filter(r => r.type === 'gecompenseerd');
 
