@@ -391,7 +391,8 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
     setActiveQuickSlot(null);
     // 2. Perform removal/reset and guarantee any shift override is cleared
     if (target.currentLeave?.id) {
-      onDirectCancelLeave(target.currentLeave.id, target.staff.id, target.dateStr, target.slot)
+      const cancelSlot = target.currentLeave.slot === 'HELE_DAG' ? 'HELE_DAG' : target.slot;
+      onDirectCancelLeave(target.currentLeave.id, target.staff.id, target.dateStr, cancelSlot)
         .catch(err => console.warn('Cancel leave action error:', err));
     }
     if (onClearShiftOverride) {

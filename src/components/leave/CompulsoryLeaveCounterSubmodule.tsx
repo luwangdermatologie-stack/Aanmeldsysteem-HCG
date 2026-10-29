@@ -5,17 +5,19 @@
 
 import React, { useMemo, useState } from 'react';
 import { StaffMember, LeaveRequest } from '../../types';
-import { Calendar, Briefcase, TrendingDown, Sparkles } from 'lucide-react';
+import { Calendar, Briefcase, TrendingDown, Sparkles, Trash2 } from 'lucide-react';
 import { formatBelgianDate, isLeaveRequestForStaff } from '../../services/leaveService';
 
 interface CompulsoryLeaveCounterSubmoduleProps {
   staffList: StaffMember[];
   leaveRequests: LeaveRequest[];
+  onDeleteRequest?: (requestId: string) => Promise<void>;
 }
 
 export const CompulsoryLeaveCounterSubmodule: React.FC<CompulsoryLeaveCounterSubmoduleProps> = ({
   staffList,
-  leaveRequests
+  leaveRequests,
+  onDeleteRequest
 }) => {
   // Continuous counter: default to 'all' across all years as requested
   const [selectedYear, setSelectedYear] = useState<string>('all');
@@ -203,7 +205,7 @@ export const CompulsoryLeaveCounterSubmodule: React.FC<CompulsoryLeaveCounterSub
                           </div>
                         </div>
 
-                        <div>
+                        <div className="flex items-center gap-1.5 shrink-0">
                           {isCompensated ? (
                             <span className="font-bold text-teal-800 text-[10px] bg-teal-100/90 px-2 py-0.5 rounded-full border border-teal-300">
                               -{item.units} dag
@@ -212,6 +214,22 @@ export const CompulsoryLeaveCounterSubmodule: React.FC<CompulsoryLeaveCounterSub
                             <span className="font-bold text-amber-800 text-[10px] bg-amber-100/90 px-2 py-0.5 rounded-full border border-amber-300">
                               +{item.units} dag
                             </span>
+                          )}
+
+                          {onDeleteRequest && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Weet u zeker dat u dit ${isCompensated ? 'compensatiemoment' : 'verplicht verlof'} van ${formatBelgianDate(item.date)} definitief wilt verwijderen?`)) {
+                                  onDeleteRequest(item.id);
+                                }
+                              }}
+                              className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
+                              title="Verwijderen"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           )}
                         </div>
                       </div>

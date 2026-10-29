@@ -8,6 +8,7 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  doc,
   onSnapshot,
   writeBatch,
   query,
@@ -83,6 +84,44 @@ export interface LeavePlanningModuleProps {
 }
 
 const getEnvStorageKey = (key: string) => `${getDetectedEnvironment()}_${key}`;
+const TOMBSTONE_STORAGE_KEY = 'derm_deleted_leave_ids_store';
+
+function getDeletedLeaveIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(TOMBSTONE_STORAGE_KEY) || localStorage.getItem(getEnvStorageKey(TOMBSTONE_STORAGE_KEY));
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return new Set(arr);
+    }
+  } catch (e) {}
+  return new Set();
+}
+
+function recordDeletedLeaveIds(ids: Iterable<string>) {
+  try {
+    const current = getDeletedLeaveIds();
+    for (const id of ids) {
+      if (id && typeof id === 'string') current.add(id);
+    }
+    const arr = Array.from(current).slice(-2000);
+    const json = JSON.stringify(arr);
+    localStorage.setItem(TOMBSTONE_STORAGE_KEY, json);
+    localStorage.setItem(getEnvStorageKey(TOMBSTONE_STORAGE_KEY), json);
+  } catch (e) {}
+}
+
+function unmarkDeletedLeaveId(id: string) {
+  try {
+    const current = getDeletedLeaveIds();
+    if (current.has(id)) {
+      current.delete(id);
+      const arr = Array.from(current);
+      const json = JSON.stringify(arr);
+      localStorage.setItem(TOMBSTONE_STORAGE_KEY, json);
+      localStorage.setItem(getEnvStorageKey(TOMBSTONE_STORAGE_KEY), json);
+    }
+  } catch (e) {}
+}
 
 export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   activeStaffList,
@@ -93,7 +132,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('week_overview');
   const [showRestoreModal, setShowRestoreModal] = useState(false);
-  const deletedRequestIdsRef = useRef<Set<string>>(new Set());
+  const deletedRequestIdsRef = useRef<Set<string>>(getDeletedLeaveIds());
 
   // Firestore & Local Cache Collections Data
   const [staffList, setStaffList] = useState<StaffMember[]>(() => {
@@ -113,11 +152,23 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => {
     try {
-      const cached = localStorage.getItem(getEnvStorageKey('derm_leave_requests_store')) || localStorage.getItem('derm_leave_requests_store');
+      const deletedIds = getDeletedLeaveIds();
+      const rawEnv = localStorage.getItem(getEnvStorageKey('derm_leave_requests_store'));
+      const rawFallback = localStorage.getItem('derm_leave_requests_store');
+      const cached = rawEnv || rawFallback;
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          return parsed.filter((r: LeaveRequest) => !isDummyLeaveRequest(r));
+          const filtered = parsed.filter((r: LeaveRequest) => !isDummyLeaveRequest(r) && !deletedIds.has(r.id));
+          // Clean up cache if any deleted requests were lingering
+          if (filtered.length !== parsed.length) {
+            try {
+              const json = JSON.stringify(filtered);
+              localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), json);
+              localStorage.setItem('derm_leave_requests_store', json);
+            } catch (e) {}
+          }
+          return filtered;
         }
       }
     } catch (e) {
@@ -235,39 +286,53 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     const unsubRequests = onSnapshot(
       col('leave_requests'),
       snapshot => {
+        const deletedIds = getDeletedLeaveIds();
         const list: LeaveRequest[] = [];
+        const toPurgeFromFirestore: string[] = [];
+
         snapshot.forEach(d => {
           const data = d.data() as Partial<LeaveRequest>;
           if (isDummyLeaveRequest(data) || !data.staff_id || !data.date) {
             // Ignore dummy or corrupt records without issuing destructive deletes during read listening
             return;
           }
+          // If this request was deleted by the user, ignore it and purge it from Firestore
+          if (deletedIds.has(d.id) || deletedRequestIdsRef.current.has(d.id)) {
+            toPurgeFromFirestore.push(d.id);
+            return;
+          }
           const req = { ...data, id: d.id } as LeaveRequest;
           list.push(req);
         });
 
+        // Actively purge any deleted documents that Firestore still had
+        if (toPurgeFromFirestore.length > 0) {
+          toPurgeFromFirestore.forEach(id => {
+            deleteDoc(doc(db, 'test_leave_requests', id)).catch(() => {});
+            deleteDoc(doc(db, 'leave_requests', id)).catch(() => {});
+          });
+        }
+
         setLeaveRequests(prev => {
+          // Filter out explicitly cancelled/deleted IDs from Firestore list
+          const validFirestoreList = list.filter(r => !deletedIds.has(r.id) && !deletedRequestIdsRef.current.has(r.id));
+
+          // Retain legitimate local optimistic requests ONLY if explicitly marked with _isPendingSync
+          // NEVER resurrect arbitrary deleted or missing documents from previous local caches!
           const firestoreIds = new Set(list.map(r => r.id));
-          // Filter out explicitly cancelled/deleted IDs from Firestore list as well
-          const validFirestoreList = list.filter(r => !deletedRequestIdsRef.current.has(r.id));
-
-          // Retain legitimate local optimistic/cached requests that are not yet reflected in Firestore
-          // AND exclude any deleted request IDs so cancelled leaves are never resurrected!
           const uncommittedLocal = prev.filter(
-            r => !firestoreIds.has(r.id) && !isDummyLeaveRequest(r) && !deletedRequestIdsRef.current.has(r.id)
+            r => !firestoreIds.has(r.id) &&
+                 !isDummyLeaveRequest(r) &&
+                 !deletedIds.has(r.id) &&
+                 !deletedRequestIdsRef.current.has(r.id) &&
+                 (r as any)._isPendingSync === true
           );
-
-          // Self-heal: ensure legitimate uncommitted local requests get saved to Firestore in background
-          if (uncommittedLocal.length > 0) {
-            uncommittedLocal.forEach(r => {
-              setDoc(docRef('leave_requests', r.id), sanitizeForFirestore(r))
-                .catch(err => console.warn('Background sync of local leave request to Firestore:', err));
-            });
-          }
 
           const merged = [...validFirestoreList, ...uncommittedLocal];
           try {
-            localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(merged));
+            const json = JSON.stringify(merged);
+            localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), json);
+            localStorage.setItem('derm_leave_requests_store', json);
           } catch (e) {}
           return merged;
         });
@@ -630,15 +695,28 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         next.push(splitDocToWrite);
       }
       try {
-        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
+        const json = JSON.stringify(next);
+        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), json);
+        localStorage.setItem('derm_leave_requests_store', json);
       } catch (e) {}
       return next;
     });
 
+    // Unmark targetId from tombstones since it is actively set
+    unmarkDeletedLeaveId(updatedRequest.id);
+    deletedRequestIdsRef.current.delete(updatedRequest.id);
+
     // 4. Reliable direct persistence to Firestore
-    toDeleteFromDb.forEach(oldId => {
-      deleteDoc(docRef('leave_requests', oldId)).catch(() => {});
-    });
+    if (toDeleteFromDb.length > 0) {
+      toDeleteFromDb.forEach(oldId => {
+        deletedRequestIdsRef.current.add(oldId);
+      });
+      recordDeletedLeaveIds(toDeleteFromDb);
+      toDeleteFromDb.forEach(oldId => {
+        deleteDoc(doc(db, 'test_leave_requests', oldId)).catch(() => {});
+        deleteDoc(doc(db, 'leave_requests', oldId)).catch(() => {});
+      });
+    }
 
     try {
       await setDoc(docRef('leave_requests', updatedRequest.id), sanitizeForFirestore(updatedRequest));
@@ -667,7 +745,8 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     if (staffId && date) {
       const staffMatches = leaveRequests.filter(r => isLeaveRequestForStaff(r, staffId) && r.date === date);
       staffMatches.forEach(r => {
-        if (!slot || slot === 'HELE_DAG' || r.slot === slot) {
+        // When canceling the whole day, or slot matches, or cancelling a compensatiedag, delete the entire request
+        if (!slot || slot === 'HELE_DAG' || r.slot === slot || r.type === 'gecompenseerd') {
           idsToDelete.add(r.id);
         } else if (r.slot === 'HELE_DAG') {
           // If a whole day leave is cancelled for only VM or NM, split the remaining slot!
@@ -688,22 +767,39 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       });
     }
 
-    // Add all deleted IDs to deletedRequestIdsRef so they are NEVER resurrected!
+    // Add all deleted IDs to in-memory ref AND persistent tombstone!
     idsToDelete.forEach(id => deletedRequestIdsRef.current.add(id));
+    recordDeletedLeaveIds(idsToDelete);
 
     // Clear any shift override for this slot if set to 'vrij'
-    if (staffId && date && slot && slot !== 'HELE_DAG') {
-      const overrideKey = `${staffId}_${date}_${slot.toLowerCase()}`;
+    if (staffId && date) {
+      const keysToClear = slot && slot !== 'HELE_DAG'
+        ? [`${staffId}_${date}_${slot.toLowerCase()}`]
+        : [`${staffId}_${date}_vm`, `${staffId}_${date}_nm`];
+
       setShiftOverrides(prev => {
-        if (!prev[overrideKey]) return prev;
         const next = { ...prev };
-        delete next[overrideKey];
-        try {
-          localStorage.setItem(getEnvStorageKey('derm_shift_overrides_store'), JSON.stringify(next));
-        } catch (e) {}
+        let changed = false;
+        keysToClear.forEach(k => {
+          if (next[k]) {
+            delete next[k];
+            changed = true;
+          }
+        });
+        if (changed) {
+          try {
+            const json = JSON.stringify(next);
+            localStorage.setItem(getEnvStorageKey('derm_shift_overrides_store'), json);
+            localStorage.setItem('derm_shift_overrides_store', json);
+          } catch (e) {}
+        }
         return next;
       });
-      deleteDoc(docRef('leave_config', `override_${overrideKey}`)).catch(() => {});
+
+      keysToClear.forEach(k => {
+        deleteDoc(doc(db, 'test_leave_config', `override_${k}`)).catch(() => {});
+        deleteDoc(doc(db, 'leave_config', `override_${k}`)).catch(() => {});
+      });
     }
 
     // 1. Immediate zero-latency local optimistic update
@@ -713,15 +809,19 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         next.push(splitDocToWrite);
       }
       try {
-        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
+        const json = JSON.stringify(next);
+        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), json);
+        localStorage.setItem('derm_leave_requests_store', json);
       } catch (e) {}
       return next;
     });
 
-    // 2. Persist deletion to Firestore
+    // 2. Persist deletion to Firestore in BOTH test and prod collections
     idsToDelete.forEach(id => {
-      deleteDoc(docRef('leave_requests', id))
-        .catch(err => console.warn('Firestore leave delete failed, removed locally:', err));
+      deleteDoc(doc(db, 'test_leave_requests', id))
+        .catch(err => console.warn('Firestore test leave delete failed:', err));
+      deleteDoc(doc(db, 'leave_requests', id))
+        .catch(err => console.warn('Firestore prod leave delete failed:', err));
     });
 
     if (splitDocToWrite) {
@@ -949,16 +1049,21 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   const handleDeleteLeaveRequest = async (requestId: string) => {
     if (!requestId) return;
     deletedRequestIdsRef.current.add(requestId);
+    recordDeletedLeaveIds([requestId]);
+
     setLeaveRequests(prev => {
       const next = prev.filter(r => r.id !== requestId);
       try {
-        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(next));
+        const json = JSON.stringify(next);
+        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), json);
+        localStorage.setItem('derm_leave_requests_store', json);
       } catch (e) {}
       return next;
     });
 
     try {
-      await deleteDoc(docRef('leave_requests', requestId));
+      await deleteDoc(doc(db, 'test_leave_requests', requestId));
+      await deleteDoc(doc(db, 'leave_requests', requestId));
     } catch (err) {
       console.warn('Firestore delete leave request failed, updated locally:', err);
     }
@@ -1433,6 +1538,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         <CompulsoryLeaveCounterSubmodule
           staffList={staffList}
           leaveRequests={leaveRequests}
+          onDeleteRequest={handleDeleteLeaveRequest}
         />
       )}
 
