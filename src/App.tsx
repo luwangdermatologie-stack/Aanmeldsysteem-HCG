@@ -8,6 +8,8 @@ import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timeshee
 import KioskApp from './components/KioskApp';
 import AdminDashboard from './components/AdminDashboard';
 import PinLockModal from './components/PinLockModal';
+import MobileTimesheetApp from './components/MobileTimesheetApp';
+import { UpdateNotificationBanner } from './components/UpdateNotificationBanner';
 import { executeGdprAnonymization } from './services/gdprService';
 import { getAccessToken, backupTimesheetsToGoogleSheets } from './services/googleSheetsService';
 import { syncStaffBetweenConfigAndLeave, isDummyPersonnel } from './services/leaveService';
@@ -24,22 +26,40 @@ import {
   ClipboardList,
   HeartPulse,
   Lock,
-  Unlock
+  Unlock,
+  Smartphone
 } from 'lucide-react';
 import { db, col, docRef, getDetectedEnvironment, initializeDatabaseIfEmpty, handleFirestoreError, OperationType, sanitizeForFirestore } from './firebase';
 import { setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, getDocs } from 'firebase/firestore';
 
 export default function App() {
-  const [viewMode, setViewMode] = useState<'split' | 'kiosk' | 'admin'>(() => {
+  const [viewMode, setViewMode] = useState<'split' | 'kiosk' | 'admin' | 'tiktijden'>(() => {
+    if (typeof window === 'undefined') return 'kiosk';
     const params = new URLSearchParams(window.location.search);
-    const view = params.get('view');
+    const hash = (window.location.hash || '').toLowerCase();
+    const pathname = (window.location.pathname || '').toLowerCase();
+    const view = (params.get('view') || params.get('app') || '').toLowerCase();
+
+    // Direct match for dedicated smartphone timesheet app
+    if (
+      view === 'tiktijden' || 
+      view === 'clockin' || 
+      view === 'timesheet' || 
+      view === 'timesheets' ||
+      hash.includes('tiktijden') || 
+      hash.includes('clockin') ||
+      pathname.endsWith('/tiktijden')
+    ) {
+      return 'tiktijden';
+    }
+
     if (view === 'kiosk' || view === 'admin' || view === 'split') {
       return view;
     }
     
     try {
       const stored = localStorage.getItem('derm_reception_viewmode');
-      if (stored === 'kiosk' || stored === 'admin' || stored === 'split') {
+      if (stored === 'kiosk' || stored === 'admin' || stored === 'split' || stored === 'tiktijden') {
         return stored;
       }
     } catch (e) {
@@ -52,6 +72,37 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     return params.get('lock') === 'true' || params.get('hideHeader') === 'true';
   });
+
+  // Listen for back/forward navigation and hash change
+  useEffect(() => {
+    const handlePopOrHashChange = () => {
+      const params = new URLSearchParams(window.location.search);
+      const hash = (window.location.hash || '').toLowerCase();
+      const pathname = (window.location.pathname || '').toLowerCase();
+      const view = (params.get('view') || params.get('app') || '').toLowerCase();
+
+      if (
+        view === 'tiktijden' || 
+        view === 'clockin' || 
+        view === 'timesheet' || 
+        view === 'timesheets' ||
+        hash.includes('tiktijden') || 
+        hash.includes('clockin') ||
+        pathname.endsWith('/tiktijden')
+      ) {
+        setViewMode('tiktijden');
+      } else if (view === 'kiosk' || view === 'admin' || view === 'split') {
+        setViewMode(view);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopOrHashChange);
+    window.addEventListener('hashchange', handlePopOrHashChange);
+    return () => {
+      window.removeEventListener('popstate', handlePopOrHashChange);
+      window.removeEventListener('hashchange', handlePopOrHashChange);
+    };
+  }, []);
 
   // Persist viewMode
   useEffect(() => {
@@ -218,7 +269,7 @@ export default function App() {
     setIsPinModalOpen(true);
   };
 
-  const handleRequestViewChange = (targetView: 'split' | 'kiosk' | 'admin') => {
+  const handleRequestViewChange = (targetView: 'split' | 'kiosk' | 'admin' | 'tiktijden') => {
     // If kiosk is currently locked, leaving kiosk or opening admin requires PIN verification
     if (systemConfig.kioskLocked && (viewMode === 'kiosk' || targetView === 'admin')) {
       handleOpenPinModal({
@@ -226,11 +277,25 @@ export default function App() {
         subtitle: 'Voer de 4-cijferige balie-pincode in om van weergave te wisselen of het beheerportaal te openen.',
         onSuccess: () => {
           setViewMode(targetView);
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.set('view', targetView);
+            window.history.pushState({}, '', url.toString());
+          } catch {}
         }
       });
       return;
     }
     setViewMode(targetView);
+    try {
+      const url = new URL(window.location.href);
+      if (targetView === 'kiosk') {
+        url.searchParams.delete('view');
+      } else {
+        url.searchParams.set('view', targetView);
+      }
+      window.history.pushState({}, '', url.toString());
+    } catch {}
   };
 
   const handleKioskStaffUnlock = () => {
@@ -272,6 +337,22 @@ export default function App() {
 
   // Sync Patients
   useEffect(() => {
+    let isMounted = true;
+    const fetchLatestPatients = async () => {
+      try {
+        const snapshot = await getDocs(col('patients'));
+        if (!isMounted) return;
+        const patientList: Patient[] = [];
+        snapshot.forEach((doc) => {
+          patientList.push(doc.data() as Patient);
+        });
+        patientList.sort((a, b) => b.id.localeCompare(a.id));
+        setPatients(patientList);
+      } catch (err) {
+        // Continuous sync handled via onSnapshot
+      }
+    };
+
     const unsubscribe = onSnapshot(col('patients'), (snapshot) => {
       const patientList: Patient[] = [];
       snapshot.forEach((doc) => {
@@ -283,7 +364,22 @@ export default function App() {
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'patients');
     });
-    return () => unsubscribe();
+
+    const handleVisibilityOrOnline = () => {
+      if (document.visibilityState === 'visible') {
+        fetchLatestPatients();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrOnline);
+    window.addEventListener('online', handleVisibilityOrOnline);
+
+    return () => {
+      isMounted = false;
+      document.removeEventListener('visibilitychange', handleVisibilityOrOnline);
+      window.removeEventListener('online', handleVisibilityOrOnline);
+      unsubscribe();
+    };
   }, [currentEnv]);
 
   // Sync Timesheets
@@ -899,7 +995,26 @@ export default function App() {
           </div>
         )}
 
+        {/* VIEW 4: DEDICATED SMARTPHONE TIKTIJDEN APP (EDGE-TO-EDGE) */}
+        {viewMode === 'tiktijden' && (
+          <div className="w-full flex-1 flex flex-col items-stretch h-full min-h-screen">
+            <MobileTimesheetApp 
+              activeStaffList={staff}
+              timesheets={timesheets}
+              systemConfig={systemConfig}
+              onUpdateTimesheet={handleUpdateTimesheet}
+              onDeleteTimesheet={handleDeleteTimesheet}
+              onOpenAdmin={() => handleRequestViewChange('admin')}
+              onOpenAdminWithPin={handleOpenAdminWithPin}
+              onSwitchView={(v) => handleRequestViewChange(v)}
+            />
+          </div>
+        )}
+
       </main>
+
+      {/* AUTO UPDATE NOTIFICATION BANNER */}
+      <UpdateNotificationBanner />
 
       {/* PIN LOCK SECURITY MODAL */}
       <PinLockModal

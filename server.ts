@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 
 async function startServer() {
   const app = express();
@@ -188,6 +189,179 @@ async function startServer() {
     }
 
     return res.json({ valid: true, message: "Aanvraag voldoet aan het vaste werkschema." });
+  });
+
+  // =========================================================================
+  // PERSISTENT LEAVE STORE (SURVIVES RESTARTS, REFRESHES, FIRESTORE QUOTA EXHAUSTION)
+  // =========================================================================
+  const LEAVE_STORE_FILE = path.resolve(process.cwd(), "data", "leave_store.json");
+
+  function readLeaveStore(): {
+    staff: any[];
+    requests: any[];
+    comments: any[];
+    todos: any[];
+    overrides: Record<string, string>;
+  } {
+    try {
+      if (!fs.existsSync(path.dirname(LEAVE_STORE_FILE))) {
+        fs.mkdirSync(path.dirname(LEAVE_STORE_FILE), { recursive: true });
+      }
+      if (fs.existsSync(LEAVE_STORE_FILE)) {
+        const raw = fs.readFileSync(LEAVE_STORE_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        return {
+          staff: Array.isArray(parsed?.staff) ? parsed.staff : [],
+          requests: Array.isArray(parsed?.requests) ? parsed.requests : [],
+          comments: Array.isArray(parsed?.comments) ? parsed.comments : [],
+          todos: Array.isArray(parsed?.todos) ? parsed.todos : [],
+          overrides: parsed?.overrides && typeof parsed.overrides === 'object' ? parsed.overrides : {}
+        };
+      }
+    } catch (e) {
+      console.warn("[Server Leave Store] Read error:", e);
+    }
+    return { staff: [], requests: [], comments: [], todos: [], overrides: {} };
+  }
+
+  function writeLeaveStore(data: any) {
+    try {
+      if (!fs.existsSync(path.dirname(LEAVE_STORE_FILE))) {
+        fs.mkdirSync(path.dirname(LEAVE_STORE_FILE), { recursive: true });
+      }
+      fs.writeFileSync(LEAVE_STORE_FILE, JSON.stringify(data, null, 2), "utf-8");
+    } catch (e) {
+      console.error("[Server Leave Store] Write error:", e);
+    }
+  }
+
+  // GET complete leave data for instant multi-browser synchronization
+  app.get("/api/leave/data", (req, res) => {
+    const store = readLeaveStore();
+    res.json(store);
+  });
+
+  // POST save or update leave request(s)
+  app.post("/api/leave/requests", (req, res) => {
+    const payload = req.body;
+    const store = readLeaveStore();
+    const itemsToSave: any[] = Array.isArray(payload) 
+      ? payload 
+      : (Array.isArray(payload?.requests) ? payload.requests : (payload?.request ? [payload.request] : [payload]));
+
+    itemsToSave.forEach(newItem => {
+      if (!newItem || !newItem.id) return;
+      const idx = store.requests.findIndex(r => r.id === newItem.id);
+      if (idx >= 0) {
+        store.requests[idx] = { ...store.requests[idx], ...newItem };
+      } else {
+        store.requests.push(newItem);
+      }
+    });
+
+    writeLeaveStore(store);
+    res.json({ success: true, count: store.requests.length });
+  });
+
+  // DELETE leave request
+  app.delete("/api/leave/requests/:id", (req, res) => {
+    const { id } = req.params;
+    const store = readLeaveStore();
+    store.requests = store.requests.filter(r => r.id !== id);
+    writeLeaveStore(store);
+    res.json({ success: true, count: store.requests.length });
+  });
+
+  // POST batch delete leave requests
+  app.post("/api/leave/requests/delete-batch", (req, res) => {
+    const ids: string[] = req.body?.ids || [];
+    const idSet = new Set(ids);
+    const store = readLeaveStore();
+    store.requests = store.requests.filter(r => !idSet.has(r.id));
+    writeLeaveStore(store);
+    res.json({ success: true, count: store.requests.length });
+  });
+
+  // POST save or update staff list
+  app.post("/api/leave/staff", (req, res) => {
+    const newStaff = req.body?.staff || req.body;
+    if (Array.isArray(newStaff)) {
+      const store = readLeaveStore();
+      store.staff = newStaff;
+      writeLeaveStore(store);
+      return res.json({ success: true, count: store.staff.length });
+    }
+    res.status(400).json({ error: "Invalid staff payload, expected array." });
+  });
+
+  // POST shift overrides
+  app.post("/api/leave/overrides", (req, res) => {
+    const store = readLeaveStore();
+    const { key, status, overrides } = req.body;
+    if (overrides && typeof overrides === 'object') {
+      store.overrides = { ...store.overrides, ...overrides };
+    } else if (key && status) {
+      store.overrides[key] = status;
+    }
+    writeLeaveStore(store);
+    res.json({ success: true, overrides: store.overrides });
+  });
+
+  // DELETE shift override
+  app.delete("/api/leave/overrides/:key", (req, res) => {
+    const { key } = req.params;
+    const store = readLeaveStore();
+    delete store.overrides[key];
+    writeLeaveStore(store);
+    res.json({ success: true, overrides: store.overrides });
+  });
+
+  // POST save comments
+  app.post("/api/leave/comments", (req, res) => {
+    const payload = req.body;
+    const store = readLeaveStore();
+    const items: any[] = Array.isArray(payload) ? payload : [payload];
+    items.forEach(c => {
+      if (!c || !c.id) return;
+      const idx = store.comments.findIndex(item => item.id === c.id);
+      if (idx >= 0) store.comments[idx] = { ...store.comments[idx], ...c };
+      else store.comments.push(c);
+    });
+    writeLeaveStore(store);
+    res.json({ success: true, count: store.comments.length });
+  });
+
+  // DELETE comment
+  app.delete("/api/leave/comments/:id", (req, res) => {
+    const { id } = req.params;
+    const store = readLeaveStore();
+    store.comments = store.comments.filter(c => c.id !== id);
+    writeLeaveStore(store);
+    res.json({ success: true });
+  });
+
+  // POST save todos
+  app.post("/api/leave/todos", (req, res) => {
+    const payload = req.body;
+    const store = readLeaveStore();
+    const items: any[] = Array.isArray(payload) ? payload : [payload];
+    items.forEach(t => {
+      if (!t || !t.id) return;
+      const idx = store.todos.findIndex(item => item.id === t.id);
+      if (idx >= 0) store.todos[idx] = { ...store.todos[idx], ...t };
+      else store.todos.push(t);
+    });
+    writeLeaveStore(store);
+    res.json({ success: true, count: store.todos.length });
+  });
+
+  // DELETE todo
+  app.delete("/api/leave/todos/:id", (req, res) => {
+    const { id } = req.params;
+    const store = readLeaveStore();
+    store.todos = store.todos.filter(t => t.id !== id);
+    writeLeaveStore(store);
+    res.json({ success: true });
   });
 
   // 2. Cascade Delete Specification endpoint & verification

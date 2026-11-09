@@ -17,12 +17,21 @@ export default defineConfig(() => {
           id: '/',
           name: 'Digitaal Ontvangstsysteem Dermatologie',
           short_name: 'DermatoMed',
-          description: 'Digitaal ontvangstsysteem met patiëntenkiosk en beheerportaal.',
-          theme_color: '#FAF7F5',
-          background_color: '#FAF7F5',
+          description: 'Digitaal ontvangstsysteem met patiëntenkiosk, beheerportaal en smartphone tiktijden app.',
+          theme_color: '#0f172a',
+          background_color: '#0f172a',
           display: 'standalone',
           start_url: '/',
           scope: '/',
+          shortcuts: [
+            {
+              name: 'Tiktijden Mobiel',
+              short_name: 'Tiktijden',
+              description: 'Snel in- en uitklokken voor medewerkers',
+              url: '/?view=tiktijden',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
+            }
+          ],
           icons: [
             {
               src: '/pwa-192x192.png',
@@ -48,8 +57,20 @@ export default defineConfig(() => {
           skipWaiting: true,
           clientsClaim: true,
           cleanupOutdatedCaches: true,
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          navigateFallback: null,
+          globPatterns: ['**/*.{js,css,ico,png,svg,woff,woff2}'],
           runtimeCaching: [
+            {
+              urlPattern: ({ request }) => request.mode === 'navigate',
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'html-pages-cache',
+                networkTimeoutSeconds: 3,
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
               handler: 'CacheFirst',

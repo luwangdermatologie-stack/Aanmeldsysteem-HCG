@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timesheet } from '../types';
 import GoogleSheetsBackupSection from './GoogleSheetsBackupSection';
 import { LeavePlanningModule } from './leave/LeavePlanningModule';
@@ -39,8 +39,16 @@ import {
   Tablet,
   Database,
   Copy,
-  Sparkles
+  Sparkles,
+  ChevronDown,
+  Check,
+  X,
+  Filter,
+  AlertTriangle,
+  Smartphone,
+  QrCode
 } from 'lucide-react';
+import QRCode from 'qrcode';
 
 interface AdminDashboardProps {
   patients: Patient[];
@@ -61,7 +69,7 @@ interface AdminDashboardProps {
   onLockAdmin?: () => void;
   onRunGdprAnonymize?: () => Promise<{ processed: number; anonymized: number }>;
   onTeamsNotify?: (messageText: string, target?: string, payload?: any) => Promise<boolean>;
-  onSwitchView?: (view: 'kiosk' | 'split' | 'admin') => void;
+  onSwitchView?: (view: 'kiosk' | 'split' | 'admin' | 'tiktijden') => void;
   onSyncStaff?: () => Promise<any>;
   onRestoreTimesheets?: (restored: Timesheet[]) => Promise<void>;
 }
@@ -92,7 +100,38 @@ export default function AdminDashboard({
   // Tabs and filters inside Admin
   const [activeTab, setActiveTab] = useState<'overview' | 'config' | 'timesheets' | 'leave'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
-  const [doctorFilter, setDoctorFilter] = useState('all');
+  const [selectedDoctorIds, setSelectedDoctorIds] = useState<string[]>([]);
+  const [isDoctorDropdownOpen, setIsDoctorDropdownOpen] = useState(false);
+  const doctorDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close doctor dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (doctorDropdownRef.current && !doctorDropdownRef.current.contains(event.target as Node)) {
+        setIsDoctorDropdownOpen(false);
+      }
+    };
+    if (isDoctorDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDoctorDropdownOpen]);
+
+  const handleToggleDoctor = (drId: string) => {
+    setSelectedDoctorIds(prev => 
+      prev.includes(drId) ? prev.filter(id => id !== drId) : [...prev, drId]
+    );
+  };
+
+  const handleSelectAllDoctors = () => {
+    setSelectedDoctorIds(doctors.map(d => d.id));
+  };
+
+  const handleClearDoctorFilter = () => {
+    setSelectedDoctorIds([]);
+  };
   const [roomFilter, setRoomFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState<'arrivalTime' | 'appointmentTime'>('arrivalTime');
@@ -134,6 +173,39 @@ export default function AdminDashboard({
   const [editingTsDate, setEditingTsDate] = useState<string>('');
   const [editingTsIn, setEditingTsIn] = useState<string>('');
   const [editingTsOut, setEditingTsOut] = useState<string>('');
+
+  // Smartphone App modal & QR code state
+  const [showSmartphoneModal, setShowSmartphoneModal] = useState(false);
+  const [adminQrCodeUrl, setAdminQrCodeUrl] = useState('');
+  const [copiedSmartphoneLink, setCopiedSmartphoneLink] = useState(false);
+
+  const smartphoneAppUrl = React.useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    return `${window.location.origin}${window.location.pathname}?view=tiktijden`;
+  }, []);
+
+  React.useEffect(() => {
+    if (showSmartphoneModal && smartphoneAppUrl) {
+      QRCode.toDataURL(smartphoneAppUrl, {
+        width: 300,
+        margin: 2,
+        color: { dark: '#0f172a', light: '#ffffff' }
+      })
+        .then(url => setAdminQrCodeUrl(url))
+        .catch(err => console.error("QR Code generation error:", err));
+    }
+  }, [showSmartphoneModal, smartphoneAppUrl]);
+
+  const handleCopySmartphoneLink = async () => {
+    try {
+      await navigator.clipboard.writeText(smartphoneAppUrl);
+      setCopiedSmartphoneLink(true);
+      setTimeout(() => setCopiedSmartphoneLink(false), 2500);
+      showToast("📱 Link naar Smartphone Tiktijden App gekopieerd!", "success");
+    } catch {
+      showToast("Kopiëren mislukt", "warning");
+    }
+  };
 
   // Security PIN and GDPR state
   const [tempPin, setTempPin] = useState(systemConfig.adminPin || '1234');
@@ -499,8 +571,8 @@ export default function AdminDashboard({
   };
 
   // Filter & Sort patients list
-  const filteredPatients = patients
-    .filter(p => p.status !== 'Archived')
+  const activePatients = patients.filter(p => p.status !== 'Archived');
+  const filteredPatients = activePatients
     .filter(p => {
       const searchLower = searchTerm.toLowerCase();
       const cleanSearchDigits = searchTerm.replace(/\D/g, '');
@@ -513,7 +585,11 @@ export default function AdminDashboard({
         (cleanSearchDigits && patientRegClean.includes(cleanSearchDigits)) ||
         (p.idCardNum && p.idCardNum.includes(searchTerm)) ||
         (cleanSearchDigits && patientIdClean.includes(cleanSearchDigits));
-      const matchDoc = doctorFilter === 'all' || p.doctorId === doctorFilter;
+      const matchDoc = 
+        selectedDoctorIds.length === 0 || 
+        (p.doctorId ? selectedDoctorIds.includes(p.doctorId) : false) ||
+        (p.doctorName ? doctors.some(d => selectedDoctorIds.includes(d.id) && d.name.toLowerCase() === p.doctorName?.toLowerCase()) : false) ||
+        (!p.doctorId && !p.doctorName);
       const matchRoom = roomFilter === 'all' || p.waitingRoom === roomFilter;
       const matchStatus = statusFilter === 'all' || p.status === statusFilter;
       
@@ -537,6 +613,15 @@ export default function AdminDashboard({
         return valB.localeCompare(valA);
       }
     });
+
+  const hiddenPatientsCount = Math.max(0, activePatients.length - filteredPatients.length);
+
+  const handleClearAllFilters = () => {
+    setSearchTerm('');
+    setSelectedDoctorIds([]);
+    setRoomFilter('all');
+    setStatusFilter('all');
+  };
 
   const toggleSort = (field: 'arrivalTime' | 'appointmentTime') => {
     if (sortBy === field) {
@@ -955,6 +1040,31 @@ export default function AdminDashboard({
             Configuratie & Reset
           </button>
         </div>
+
+        {/* Quick button to open / share the Smartphone Tiktijden App */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowSmartphoneModal(true)}
+            className="px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 shadow-2xs text-xs"
+            title="Toon QR-code en smartphone link voor medewerkers"
+          >
+            <QrCode className="h-3.5 w-3.5 text-indigo-600" />
+            <span className="hidden sm:inline">QR-Code Medewerkers</span>
+          </button>
+
+          {onSwitchView && (
+            <button
+              type="button"
+              onClick={() => onSwitchView('tiktijden')}
+              className="px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white shadow-xs text-xs"
+              title="Open de aparte smartphone app voor medewerkers"
+            >
+              <Smartphone className="h-3.5 w-3.5" />
+              <span>📱 Smartphone App</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* CORE WORKSPACE PANELS */}
@@ -1031,18 +1141,140 @@ export default function AdminDashboard({
                   />
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <select
-                    id="admin-filter-doctor"
-                    value={doctorFilter}
-                    onChange={(e) => setDoctorFilter(e.target.value)}
-                    className="text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 font-semibold"
-                  >
-                    <option value="all">Alle Artsen</option>
-                    {doctors.map(dr => (
-                      <option key={dr.id} value={dr.id}>{dr.name}</option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {/* DOCTOR MULTI-SELECT DROPDOWN */}
+                  <div className="relative" ref={doctorDropdownRef}>
+                    <button
+                      id="admin-filter-doctor"
+                      type="button"
+                      onClick={() => setIsDoctorDropdownOpen(prev => !prev)}
+                      className={`w-full text-xs p-2 rounded-lg border text-left font-semibold flex items-center justify-between transition cursor-pointer ${
+                        selectedDoctorIds.length > 0
+                          ? 'border-indigo-400 bg-indigo-50/70 text-indigo-950 ring-1 ring-indigo-400/30'
+                          : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                      }`}
+                      title="Klik om meerdere artsen te selecteren"
+                    >
+                      <span className="truncate flex items-center gap-1.5 min-w-0">
+                        <Users className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                        {selectedDoctorIds.length === 0 && (
+                          <span className="truncate">Alle Artsen ({doctors.length})</span>
+                        )}
+                        {selectedDoctorIds.length === 1 && (
+                          <>
+                            <span className={`h-2 w-2 rounded-full shrink-0 ${doctors.find(d => d.id === selectedDoctorIds[0])?.avatarColor || 'bg-indigo-500'}`} />
+                            <span className="truncate">{doctors.find(d => d.id === selectedDoctorIds[0])?.name || '1 Arts'}</span>
+                          </>
+                        )}
+                        {selectedDoctorIds.length > 1 && selectedDoctorIds.length < doctors.length && (
+                          <span className="truncate flex items-center gap-1.5">
+                            <span>{selectedDoctorIds.length} artsen</span>
+                            <span className="text-[10px] bg-indigo-600 text-white font-bold px-1.5 py-0.5 rounded-full leading-none">
+                              {selectedDoctorIds.length}
+                            </span>
+                          </span>
+                        )}
+                        {selectedDoctorIds.length === doctors.length && doctors.length > 0 && (
+                          <span className="truncate">Alle artsen ({doctors.length})</span>
+                        )}
+                      </span>
+                      <ChevronDown className={`h-3.5 w-3.5 text-slate-400 shrink-0 ml-1 transition-transform ${isDoctorDropdownOpen ? 'rotate-180 text-indigo-600' : ''}`} />
+                    </button>
+
+                    {/* Popover / Dropdown Menu */}
+                    {isDoctorDropdownOpen && (
+                      <div className="absolute left-0 mt-1.5 w-72 sm:w-80 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 p-2.5 text-xs space-y-2 animate-fade-in">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-100 px-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-700 text-[11px] uppercase tracking-wider">Artsen Filter</span>
+                            {selectedDoctorIds.length > 0 && (
+                              <span className="bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded text-[10px]">
+                                {selectedDoctorIds.length} actief
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={handleSelectAllDoctors}
+                              className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                            >
+                              Alles
+                            </button>
+                            <span className="text-slate-300">|</span>
+                            <button
+                              type="button"
+                              onClick={handleClearDoctorFilter}
+                              className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 hover:underline cursor-pointer"
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="max-h-60 overflow-y-auto space-y-1 pr-0.5">
+                          {doctors.map(dr => {
+                            const isSelected = selectedDoctorIds.includes(dr.id);
+                            const patientCount = patients.filter(
+                              p => p.status !== 'Archived' && (p.doctorId === dr.id || p.doctorName?.toLowerCase() === dr.name.toLowerCase())
+                            ).length;
+
+                            return (
+                              <div
+                                key={dr.id}
+                                onClick={() => handleToggleDoctor(dr.id)}
+                                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition select-none ${
+                                  isSelected 
+                                    ? 'bg-indigo-50/80 text-indigo-950 font-semibold border border-indigo-200/50' 
+                                    : 'hover:bg-slate-50 text-slate-700 border border-transparent'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                  <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                                    isSelected 
+                                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xs' 
+                                      : 'border-slate-300 bg-white'
+                                  }`}>
+                                    {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                                  </div>
+                                  <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${dr.avatarColor}`} />
+                                  <div className="min-w-0">
+                                    <div className="text-xs truncate">{dr.name}</div>
+                                    <div className="text-[10px] text-slate-400 font-normal truncate">
+                                      {dr.specialty} • {dr.waitingRoom}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ml-1 whitespace-nowrap ${
+                                  patientCount > 0 
+                                    ? 'bg-indigo-100 text-indigo-700' 
+                                    : 'bg-slate-100 text-slate-400'
+                                }`}>
+                                  {patientCount} {patientCount === 1 ? 'patiënt' : 'patiënten'}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] px-1">
+                          <span className="text-slate-500">
+                            {selectedDoctorIds.length === 0 
+                              ? 'Alle artsen worden getoond' 
+                              : `${selectedDoctorIds.length} van de ${doctors.length} geselecteerd`}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsDoctorDropdownOpen(false)}
+                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-semibold cursor-pointer transition shadow-2xs"
+                          >
+                            Sluiten
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <select
                     id="admin-filter-room"
@@ -1068,7 +1300,73 @@ export default function AdminDashboard({
                   </select>
                 </div>
               </div>
+
+              {/* Active doctor chips / quick badges */}
+              {selectedDoctorIds.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
+                  <span className="text-[11px] font-semibold text-slate-500 mr-1 flex items-center gap-1">
+                    <Filter className="h-3 w-3 text-indigo-500" />
+                    Gefilterde artsen ({selectedDoctorIds.length}):
+                  </span>
+                  {selectedDoctorIds.map(docId => {
+                    const dr = doctors.find(d => d.id === docId);
+                    if (!dr) return null;
+                    return (
+                      <span
+                        key={docId}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200/80 shadow-2xs transition hover:bg-indigo-100/70"
+                      >
+                        <span className={`h-2 w-2 rounded-full shrink-0 ${dr.avatarColor}`} />
+                        <span>{dr.name}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleDoctor(docId);
+                          }}
+                          className="hover:text-rose-600 rounded-full hover:bg-indigo-200/60 p-0.5 transition cursor-pointer"
+                          title={`${dr.name} deselecteren`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={handleClearDoctorFilter}
+                    className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 hover:underline ml-1.5 py-0.5 px-1.5 rounded cursor-pointer"
+                  >
+                    Wis artsenfilter
+                  </button>
+                </div>
+              )}
             </div>
+
+            {/* Waarschuwing indien patiënten verborgen zijn door actieve filters */}
+            {hiddenPatientsCount > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 bg-amber-50 border border-amber-300/80 rounded-xl text-xs text-amber-900 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                  <span>
+                    <strong>{hiddenPatientsCount}</strong> van de <strong>{activePatients.length}</strong> actieve aanmeldingen verborgen door actieve filters ({[
+                      selectedDoctorIds.length > 0 ? `${selectedDoctorIds.length} arts(en)` : null,
+                      roomFilter !== 'all' ? `wachtzaal ${roomFilter}` : null,
+                      statusFilter !== 'all' ? `status ${statusFilter}` : null,
+                      searchTerm ? `zoekterm "${searchTerm}"` : null
+                    ].filter(Boolean).join(', ')}).
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearAllFilters}
+                  className="inline-flex items-center gap-1.5 font-bold text-amber-900 hover:text-amber-950 bg-amber-200/80 hover:bg-amber-300 px-3 py-1.5 rounded-lg transition text-xs whitespace-nowrap self-start sm:self-auto cursor-pointer shadow-2xs"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Wis alle filters ({activePatients.length} tonen)
+                </button>
+              </div>
+            )}
 
             {/* REAL-TIME PATIENT TABLE */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1843,12 +2141,74 @@ export default function AdminDashboard({
         {/* TAB 2: TIMESHEETS */}
         {activeTab === 'timesheets' && (
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4 animate-fade-in">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-100 pb-2.5">
               <div className="flex items-center gap-2">
                 <Clock className="h-5 w-5 text-indigo-500" />
                 <div>
                   <h3 className="font-bold text-slate-800 text-base">Personeel Tiktijden</h3>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setShowSmartphoneModal(true)}
+                  className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200/80 transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                >
+                  <QrCode className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>QR-Code & Smartphone Link</span>
+                </button>
+                {onSwitchView && (
+                  <button
+                    type="button"
+                    onClick={() => onSwitchView('tiktijden')}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                  >
+                    <Smartphone className="h-3.5 w-3.5 text-indigo-400" />
+                    <span>Open Smartphone App</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* PROMINENT SMARTPHONE APP HERO CARD */}
+            <div className="bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white p-4 rounded-2xl border border-indigo-700/40 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start sm:items-center gap-3.5">
+                <div className="h-12 w-12 rounded-2xl bg-indigo-600/60 border border-indigo-400/30 flex items-center justify-center text-white shrink-0 shadow-md">
+                  <Smartphone className="h-6 w-6 text-indigo-200" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-black text-sm sm:text-base tracking-tight text-white">
+                      Aparte Smartphone App voor Medewerkers
+                    </h4>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Live Cloud Sync
+                    </span>
+                  </div>
+                  <p className="text-xs text-indigo-200/90 mt-0.5 leading-relaxed">
+                    Medewerkers hoeven niet meer op de computer te zoeken. Laat hen de QR-code scannen of stuur de link: ze kunnen op hun eigen smartphone met 1 klik in- en uitklokken!
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowSmartphoneModal(true)}
+                  className="px-4 py-2 rounded-xl bg-white text-slate-900 hover:bg-indigo-50 font-extrabold text-xs transition flex items-center gap-1.5 shadow-md cursor-pointer"
+                >
+                  <QrCode className="h-4 w-4 text-indigo-600" />
+                  <span>Toon QR-code</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopySmartphoneLink}
+                  className="px-3.5 py-2 rounded-xl bg-indigo-800/80 hover:bg-indigo-700 text-indigo-100 font-bold text-xs border border-indigo-600/50 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  {copiedSmartphoneLink ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+                  <span>{copiedSmartphoneLink ? 'Gekopieerd!' : 'Kopieer Link'}</span>
+                </button>
               </div>
             </div>
 
@@ -2151,6 +2511,78 @@ export default function AdminDashboard({
           </div>
         </div>
       </footer>
+
+      {/* SMARTPHONE QR CODE & LINK MODAL */}
+      {showSmartphoneModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-center">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 text-left">
+                <div className="h-9 w-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+                  <Smartphone className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">Smartphone App voor Medewerkers</h3>
+                  <p className="text-xs text-slate-500">Scan met de smartphone camera om direct te openen</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSmartphoneModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 text-left">
+              Houd de camera van een iPhone of Android smartphone voor onderstaande QR-code. De app opent direct zonder login of ingewikkelde stappen.
+            </p>
+
+            <div className="bg-slate-50 p-4 rounded-2xl inline-block border border-slate-200 shadow-inner">
+              {adminQrCodeUrl ? (
+                <img src={adminQrCodeUrl} alt="Smartphone QR Code" className="w-56 h-56 mx-auto rounded-xl shadow-xs" />
+              ) : (
+                <div className="w-56 h-56 flex items-center justify-center text-slate-400">
+                  <RefreshCw className="h-6 w-6 animate-spin" />
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2 text-left">
+              <label className="text-[11px] font-bold text-slate-500 uppercase">Directe Web Link</label>
+              <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-mono text-slate-700 break-all select-all">
+                {smartphoneAppUrl}
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleCopySmartphoneLink}
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  {copiedSmartphoneLink ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  <span>{copiedSmartphoneLink ? 'Link Gekopieerd!' : 'Kopieer Link (bv. voor WhatsApp)'}</span>
+                </button>
+                {onSwitchView && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSmartphoneModal(false);
+                      onSwitchView('tiktijden');
+                    }}
+                    className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition flex items-center gap-1 cursor-pointer"
+                    title="Test en bekijk de mobiele app in deze browser"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span>Open Weergave</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

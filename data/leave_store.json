@@ -1,0 +1,346 @@
+{
+  "staff": [
+    {
+      "id": "staff-dr-1789772345288",
+      "name": "Dr. Lu Wang",
+      "role": "arts",
+      "jobTitle": "Dermatoloog",
+      "activeStaffId": "dr-1789772345288",
+      "schedule": {
+        "maandag": {
+          "vm": true,
+          "nm": true
+        },
+        "dinsdag": {
+          "vm": true,
+          "nm": true
+        },
+        "woensdag": {
+          "vm": true,
+          "nm": true
+        },
+        "donderdag": {
+          "vm": true,
+          "nm": true
+        },
+        "vrijdag": {
+          "vm": true,
+          "nm": true
+        }
+      },
+      "color": "#4F46E5"
+    },
+    {
+      "id": "staff-dr-1789772359081",
+      "name": "Dr. Avermaete Annelies",
+      "role": "arts",
+      "jobTitle": "Dermatoloog",
+      "activeStaffId": "dr-1789772359081",
+      "schedule": {
+        "maandag": {
+          "vm": true,
+          "nm": true
+        },
+        "dinsdag": {
+          "vm": true,
+          "nm": true
+        },
+        "woensdag": {
+          "vm": true,
+          "nm": true
+        },
+        "donderdag": {
+          "vm": true,
+          "nm": true
+        },
+        "vrijdag": {
+          "vm": true,
+          "nm": true
+        }
+      },
+      "color": "#059669"
+    },
+    {
+      "id": "staff-dr-1789772375881",
+      "name": "Dr. Belpaire Arno",
+      "role": "arts",
+      "jobTitle": "Dermatoloog",
+      "activeStaffId": "dr-1789772375881",
+      "schedule": {
+        "maandag": {
+          "vm": true,
+          "nm": true
+        },
+        "dinsdag": {
+          "vm": true,
+          "nm": true
+        },
+        "woensdag": {
+          "vm": true,
+          "nm": true
+        },
+        "donderdag": {
+          "vm": true,
+          "nm": true
+        },
+        "vrijdag": {
+          "vm": true,
+          "nm": true
+        }
+      },
+      "color": "#2563EB"
+    },
+    {
+      "id": "staff-1789772385212",
+      "name": "Anoek Verbunt",
+      "role": "verpleegkundige",
+      "jobTitle": "Assistente",
+      "activeStaffId": "staff-1789772385212",
+      "schedule": {
+        "maandag": {
+          "vm": true,
+          "nm": true
+        },
+        "dinsdag": {
+          "vm": true,
+          "nm": true
+        },
+        "woensdag": {
+          "vm": true,
+          "nm": true
+        },
+        "donderdag": {
+          "vm": true,
+          "nm": true
+        },
+        "vrijdag": {
+          "vm": true,
+          "nm": true
+        }
+      },
+      "color": "#D97706"
+    },
+    {
+      "id": "staff-1789772402320",
+      "name": "Elke Verdoodt",
+      "role": "verpleegkundige",
+      "jobTitle": "Assistente",
+      "activeStaffId": "staff-1789772402320",
+      "schedule": {
+        "maandag": {
+          "vm": true,
+          "nm": true
+        },
+        "dinsdag": {
+          "vm": true,
+          "nm": true
+        },
+        "woensdag": {
+          "vm": true,
+          "nm": true
+        },
+        "donderdag": {
+          "vm": true,
+          "nm": true
+        },
+        "vrijdag": {
+          "vm": true,
+          "nm": true
+        }
+      },
+      "color": "#7C3AED"
+    },
+    {
+      "id": "staff-1789772420868",
+      "name": "Chiara Contino",
+      "role": "verpleegkundige",
+      "jobTitle": "Assistente",
+      "activeStaffId": "staff-1789772420868",
+      "schedule": {
+        "maandag": {
+          "vm": true,
+          "nm": true
+        },
+        "dinsdag": {
+          "vm": true,
+          "nm": true
+        },
+        "woensdag": {
+          "vm": true,
+          "nm": true
+        },
+        "donderdag": {
+          "vm": true,
+          "nm": true
+        },
+        "vrijdag": {
+          "vm": true,
+          "nm": true
+        }
+      },
+      "color": "#0D9488"
+    }
+  ],
+  "requests": [
+    {
+      "id": "req-1790024213718-olzj8",
+      "staff_id": "staff-1789772420868",
+      "staff_name": "Chiara Contino",
+      "date": "2026-09-22",
+      "type": "verplicht",
+      "status": "afgekeurd",
+      "slot": "HELE_DAG",
+      "units": 1,
+      "created_at": "2026-09-22T08:00:00.000Z"
+    },
+    {
+      "id": "req-1790024268964-v2mhl",
+      "staff_id": "staff-dr-1789772375881",
+      "staff_name": "Dr. Belpaire Arno",
+      "date": "2026-09-28",
+      "type": "regulier",
+      "status": "goedgekeurd",
+      "slot": "HELE_DAG",
+      "units": 1,
+      "created_at": "2026-09-28T08:00:00.000Z"
+    },
+    {
+      "id": "req-1790417178537-qw5ot",
+      "staff_id": "staff-dr-1789772375881",
+      "staff_name": "Dr. Belpaire Arno",
+      "date": "2026-09-23",
+      "type": "regulier",
+      "status": "goedgekeurd",
+      "slot": "HELE_DAG",
+      "units": 1,
+      "created_at": "2026-09-23T08:00:00.000Z"
+    },
+    {
+      "id": "req-1792876065601-7tvgv",
+      "staff_id": "staff-1789772385212",
+      "staff_name": "Anoek Verbunt",
+      "date": "2026-10-20",
+      "type": "regulier",
+      "status": "goedgekeurd",
+      "slot": "NM",
+      "units": 0.5,
+      "created_at": "2026-10-20T12:00:00.000Z"
+    },
+    {
+      "id": "req-1792876073443-3ygc5",
+      "staff_id": "staff-dr-1789772345288",
+      "staff_name": "Dr. Lu Wang",
+      "date": "2026-10-19",
+      "type": "extra_dienst",
+      "status": "goedgekeurd",
+      "slot": "HELE_DAG",
+      "units": 1,
+      "created_at": "2026-10-19T08:00:00.000Z"
+    },
+    {
+      "id": "req-1792951065453-0hohc",
+      "staff_id": "staff-dr-1789772359081",
+      "staff_name": "Dr. Avermaete Annelies",
+      "date": "2026-10-20",
+      "type": "regulier",
+      "status": "goedgekeurd",
+      "slot": "HELE_DAG",
+      "units": 1,
+      "created_at": "2026-10-20T08:00:00.000Z"
+    },
+    {
+      "id": "req-1792951069706-r71vg",
+      "staff_id": "staff-dr-1789772345288",
+      "staff_name": "Dr. Lu Wang",
+      "date": "2026-10-23",
+      "type": "extra_dienst",
+      "status": "goedgekeurd",
+      "slot": "HELE_DAG",
+      "units": 1,
+      "created_at": "2026-10-23T08:00:00.000Z"
+    },
+    {
+      "id": "req-1792951071199-787fj",
+      "staff_id": "staff-dr-1789772375881",
+      "staff_name": "Dr. Belpaire Arno",
+      "date": "2026-10-23",
+      "type": "extra_dienst",
+      "status": "goedgekeurd",
+      "slot": "HELE_DAG",
+      "units": 1,
+      "created_at": "2026-10-23T08:00:00.000Z"
+    },
+    {
+      "id": "req-1792951072680-17tzx",
+      "staff_id": "staff-dr-1789772359081",
+      "staff_name": "Dr. Avermaete Annelies",
+      "date": "2026-10-23",
+      "type": "regulier",
+      "status": "goedgekeurd",
+      "slot": "HELE_DAG",
+      "units": 1,
+      "created_at": "2026-10-23T08:00:00.000Z"
+    },
+    {
+      "id": "req-1792951078971-42k38",
+      "staff_id": "staff-1789772402320",
+      "staff_name": "Elke Verdoodt",
+      "date": "2026-10-21",
+      "type": "regulier",
+      "status": "goedgekeurd",
+      "slot": "HELE_DAG",
+      "units": 1,
+      "created_at": "2026-10-21T08:00:00.000Z"
+    },
+    {
+      "id": "req-1792951080502-r6r3r",
+      "staff_id": "staff-1789772402320",
+      "staff_name": "Elke Verdoodt",
+      "date": "2026-10-22",
+      "type": "regulier",
+      "status": "goedgekeurd",
+      "slot": "HELE_DAG",
+      "units": 1,
+      "created_at": "2026-10-22T08:00:00.000Z"
+    },
+    {
+      "id": "req-1792951082662-mekrp",
+      "staff_id": "staff-dr-1789772375881",
+      "staff_name": "Dr. Belpaire Arno",
+      "date": "2026-10-22",
+      "type": "regulier",
+      "status": "goedgekeurd",
+      "slot": "HELE_DAG",
+      "units": 1,
+      "created_at": "2026-10-22T08:00:00.000Z"
+    },
+    {
+      "id": "req-1792951085282-6azjw",
+      "staff_id": "staff-dr-1789772359081",
+      "staff_name": "Dr. Avermaete Annelies",
+      "date": "2026-10-21",
+      "type": "regulier",
+      "status": "goedgekeurd",
+      "slot": "HELE_DAG",
+      "units": 1,
+      "created_at": "2026-10-21T08:00:00.000Z"
+    },
+    {
+      "id": "req-1793117729103-0e1pb",
+      "staff_id": "staff-dr-1789772345288",
+      "staff_name": "Dr. Lu Wang",
+      "date": "2026-10-26",
+      "type": "regulier",
+      "status": "goedgekeurd",
+      "slot": "VM",
+      "units": 0.5,
+      "created_at": "2026-10-26T08:00:00.000Z"
+    }
+  ],
+  "comments": [],
+  "todos": [],
+  "overrides": {
+    "staff-dr-1789772345288_2026-10-02_vm": "dienst",
+    "staff-dr-1789772345288_2026-10-02_nm": "dienst"
+  }
+}

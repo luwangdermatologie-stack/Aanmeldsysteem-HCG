@@ -27,7 +27,9 @@ import {
   Monitor,
   CreditCard,
   ZoomIn,
-  ZoomOut
+  ZoomOut,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { VirtualKeyboard } from './VirtualKeyboard';
 
@@ -88,6 +90,54 @@ export default function KioskApp({
   };
 
   const [helpCooldown, setHelpCooldown] = useState(false);
+
+  // Screen WakeLock: prevents Android tablet from sleeping, dimming, or dropping Wi-Fi socket
+  useEffect(() => {
+    let wakeLockSentinel: any = null;
+
+    const acquireLock = async () => {
+      try {
+        if ('wakeLock' in navigator && (navigator as any).wakeLock) {
+          wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch (err) {
+        // Silently handle if wakeLock is denied or low-battery
+      }
+    };
+
+    acquireLock();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        acquireLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLockSentinel) {
+        try {
+          wakeLockSentinel.release();
+        } catch (e) {}
+      }
+    };
+  }, []);
+
+  // Online / Offline connectivity detection
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Form auto-formatting helpers for Belgian clinic usage
   // Automatically pre-fills separators (slashes, dots, dashes) as soon as user types
@@ -746,6 +796,14 @@ export default function KioskApp({
       }`}
       dir={isCurrentRtl ? 'rtl' : 'ltr'}
     >
+      {/* Offline Alert Indicator if tablet drops Wi-Fi */}
+      {!isOnline && (
+        <div className="bg-amber-600 text-white text-xs font-bold py-2 px-4 rounded-xl mb-3 flex items-center justify-center gap-2 shadow-sm animate-pulse">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          <span>Kiosk is offline (geen actieve Wi-Fi verbinding). Aanmeldingen worden lokaal bewaard en automatisch verzonden zodra Wi-Fi herstelt.</span>
+        </div>
+      )}
+
       {/* High-End Clinic Brand Header Decorator - Apple Glass Bar */}
       <div className="flex justify-between items-center border-b border-black/5 pb-3 mb-3">
         <div className="flex items-center gap-2">

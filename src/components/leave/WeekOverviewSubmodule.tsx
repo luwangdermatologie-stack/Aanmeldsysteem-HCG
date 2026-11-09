@@ -913,41 +913,6 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
       {/* 3. HET WEEKROOSTER MET DIRECT VERLOF INSTELLEN & RATIO ALERTS (ROOD) */}
       {/* ========================================================================= */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        {/* Table Legend & Actions */}
-        <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3 text-xs">
-          <div className="flex items-center gap-4 flex-wrap">
-            <span className="font-bold text-slate-700 text-xs">Legende:</span>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-emerald-100 border border-emerald-300"></span>
-              <span className="text-slate-600 text-[11px]">Dienst (Aanwezig)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-indigo-50 border-2 border-dashed border-indigo-400"></span>
-              <span className="text-slate-600 text-[11px]">Verlof (In Aanvraag)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-indigo-100 border border-indigo-400"></span>
-              <span className="text-slate-600 text-[11px]">Verlof (Goedgekeurd)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-amber-50 border-2 border-dashed border-amber-400"></span>
-              <span className="text-slate-600 text-[11px]">Verplicht (In Aanvraag)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-amber-100 border border-amber-400"></span>
-              <span className="text-slate-600 text-[11px]">Verplicht (Goedgekeurd)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-teal-50 border-2 border-dashed border-teal-500"></span>
-              <span className="text-slate-600 text-[11px]">Gecompenseerd (In Aanvr)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-teal-100 border border-teal-500"></span>
-              <span className="text-slate-600 text-[11px]">Gecompenseerd (Goedgekeurd · -teller)</span>
-            </div>
-          </div>
-        </div>
-
         {/* Matrix */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[760px] md:min-w-full">
@@ -1064,14 +1029,6 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
             </thead>
 
             <tbody className="divide-y divide-slate-100 text-xs">
-              {/* SECTION: ARTSEN */}
-              <tr className="bg-blue-50/50 font-extrabold text-blue-900 border-t border-b border-blue-100">
-                <td colSpan={11} className="py-2 px-3 text-xs flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                  Artsen (Dokters) — ({doctors.length})
-                </td>
-              </tr>
-
               {doctors.map(doctor => (
                 <tr key={doctor.id} className="hover:bg-slate-50/60 transition">
                   <td className="p-2 w-[130px] min-w-[120px] max-w-[135px] sticky left-0 z-10 bg-white border-r border-slate-200 shadow-xs">
@@ -1132,14 +1089,6 @@ export const WeekOverviewSubmodule: React.FC<WeekOverviewSubmoduleProps> = ({
                   })}
                 </tr>
               ))}
-
-              {/* SECTION: VERPLEEGKUNDIGEN */}
-              <tr className="bg-emerald-50/50 font-extrabold text-emerald-900 border-t border-b border-emerald-100">
-                <td colSpan={11} className="py-2 px-3 text-xs flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
-                  Verpleegkundigen — ({nurses.length})
-                </td>
-              </tr>
 
               {nurses.map(nurse => {
                 const nurseCounter = calculateCompulsoryLeaveCounter(nurse.id, leaveRequests, staffList);

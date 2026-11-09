@@ -262,17 +262,10 @@ export function isDummyPersonnel(id?: string, name?: string): boolean {
  */
 export function isDummyLeaveRequest(req: Partial<LeaveRequest>): boolean {
   if (!req) return true;
-  const staffId = req.staff_id || (req as any).staffId;
-  const staffName = req.staff_name || (req as any).staffName;
   if (req.id && (req.id.startsWith('req-sample') || KNOWN_DUMMY_IDS.has(req.id))) {
     return true;
   }
-  if (staffId && KNOWN_DUMMY_IDS.has(staffId)) {
-    return true;
-  }
-  if (isDummyPersonnel(staffId, staffName)) {
-    return true;
-  }
+  const staffId = req.staff_id || (req as any).staffId;
   // Corrupt record check (must have staff_id and date to be valid)
   if (!staffId || !req.date) {
     return true;

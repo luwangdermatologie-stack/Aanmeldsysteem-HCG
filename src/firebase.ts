@@ -142,15 +142,7 @@ export async function initializeDatabaseIfEmpty() {
         }
       });
 
-      // 4. Leave Requests (Purge dummy, sample, or corrupt records)
-      const leaveReqSnap = await getDocs(col('leave_requests'));
-      leaveReqSnap.forEach(lr => {
-        const data = lr.data() as Partial<LeaveRequest>;
-        if (isDummyLeaveRequest(data)) {
-          purgeBatch.delete(lr.ref);
-          purgeOps++;
-        }
-      });
+      // 4. Leave Requests: Never purge user leave requests automatically on startup
 
       if (purgeOps > 0) {
         await purgeBatch.commit();

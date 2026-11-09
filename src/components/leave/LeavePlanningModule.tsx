@@ -247,6 +247,70 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
   }, []);
 
   // =========================================================================
+  // 0. SERVER-BACKED PERSISTENT STORE LOAD (SURVIVES RESTARTS & REFRESHES)
+  // =========================================================================
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/api/leave/data')
+      .then(res => res.json())
+      .then(data => {
+        if (!isMounted || !data) return;
+        const deletedIds = getDeletedLeaveIds();
+
+        // 1. Staff
+        if (Array.isArray(data.staff) && data.staff.length > 0) {
+          setStaffList(prev => (prev.length === 0 ? data.staff : prev));
+        }
+
+        // 2. Requests
+        if (Array.isArray(data.requests) && data.requests.length > 0) {
+          setLeaveRequests(prev => {
+            const map = new Map<string, LeaveRequest>();
+            prev.forEach(r => {
+              if (!deletedIds.has(r.id) && !deletedRequestIdsRef.current.has(r.id)) {
+                map.set(r.id, r);
+              }
+            });
+            data.requests.forEach((r: LeaveRequest) => {
+              if (!deletedIds.has(r.id) && !deletedRequestIdsRef.current.has(r.id) && !isDummyLeaveRequest(r)) {
+                if (!map.has(r.id)) {
+                  map.set(r.id, r);
+                }
+              }
+            });
+            const merged = Array.from(map.values());
+            try {
+              const json = JSON.stringify(merged);
+              localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), json);
+              localStorage.setItem('derm_leave_requests_store', json);
+            } catch (e) {}
+            return merged;
+          });
+        }
+
+        // 3. Overrides
+        if (data.overrides && typeof data.overrides === 'object') {
+          setShiftOverrides(prev => ({ ...data.overrides, ...prev }));
+        }
+
+        // 4. Comments
+        if (Array.isArray(data.comments) && data.comments.length > 0) {
+          setComments(prev => (prev.length === 0 ? data.comments : prev));
+        }
+
+        // 5. Todos
+        if (Array.isArray(data.todos) && data.todos.length > 0) {
+          setTodos(prev => (prev.length === 0 ? data.todos : prev));
+        }
+      })
+      .catch(err => console.warn('Could not load initial server leave data:', err));
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // =========================================================================
   // 1. FIRESTORE REAL-TIME SUBSCRIPTIONS
   // =========================================================================
   useEffect(() => {
@@ -286,56 +350,24 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     const unsubRequests = onSnapshot(
       col('leave_requests'),
       snapshot => {
-        const deletedIds = getDeletedLeaveIds();
         const list: LeaveRequest[] = [];
-        const toPurgeFromFirestore: string[] = [];
 
         snapshot.forEach(d => {
           const data = d.data() as Partial<LeaveRequest>;
           if (isDummyLeaveRequest(data) || !data.staff_id || !data.date) {
-            // Ignore dummy or corrupt records without issuing destructive deletes during read listening
-            return;
-          }
-          // If this request was deleted by the user, ignore it and purge it from Firestore
-          if (deletedIds.has(d.id) || deletedRequestIdsRef.current.has(d.id)) {
-            toPurgeFromFirestore.push(d.id);
             return;
           }
           const req = { ...data, id: d.id } as LeaveRequest;
           list.push(req);
         });
 
-        // Actively purge any deleted documents that Firestore still had
-        if (toPurgeFromFirestore.length > 0) {
-          toPurgeFromFirestore.forEach(id => {
-            deleteDoc(doc(db, 'test_leave_requests', id)).catch(() => {});
-            deleteDoc(doc(db, 'leave_requests', id)).catch(() => {});
-          });
-        }
-
-        setLeaveRequests(prev => {
-          // Filter out explicitly cancelled/deleted IDs from Firestore list
-          const validFirestoreList = list.filter(r => !deletedIds.has(r.id) && !deletedRequestIdsRef.current.has(r.id));
-
-          // Retain legitimate local optimistic requests ONLY if explicitly marked with _isPendingSync
-          // NEVER resurrect arbitrary deleted or missing documents from previous local caches!
-          const firestoreIds = new Set(list.map(r => r.id));
-          const uncommittedLocal = prev.filter(
-            r => !firestoreIds.has(r.id) &&
-                 !isDummyLeaveRequest(r) &&
-                 !deletedIds.has(r.id) &&
-                 !deletedRequestIdsRef.current.has(r.id) &&
-                 (r as any)._isPendingSync === true
-          );
-
-          const merged = [...validFirestoreList, ...uncommittedLocal];
-          try {
-            const json = JSON.stringify(merged);
-            localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), json);
-            localStorage.setItem('derm_leave_requests_store', json);
-          } catch (e) {}
-          return merged;
-        });
+        // Set authoritative Firestore list directly
+        setLeaveRequests(list);
+        try {
+          const json = JSON.stringify(list);
+          localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), json);
+          localStorage.setItem('derm_leave_requests_store', json);
+        } catch (e) {}
       },
       err => {
         console.warn('Firestore leave_requests listener (using local cache):', err);
@@ -346,15 +378,17 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     const unsubComments = onSnapshot(
       col('leave_comments'),
       snapshot => {
-        const list: GeneralComment[] = [];
-        snapshot.forEach(d => {
-          const data = d.data();
-          list.push({ ...data, id: d.id } as GeneralComment);
-        });
-        setComments(list);
-        try {
-          localStorage.setItem(getEnvStorageKey('derm_leave_comments_store'), JSON.stringify(list));
-        } catch (e) {}
+        if (!snapshot.empty) {
+          const list: GeneralComment[] = [];
+          snapshot.forEach(d => {
+            const data = d.data();
+            list.push({ ...data, id: d.id } as GeneralComment);
+          });
+          setComments(list);
+          try {
+            localStorage.setItem(getEnvStorageKey('derm_leave_comments_store'), JSON.stringify(list));
+          } catch (e) {}
+        }
       },
       err => {
         console.warn('Firestore leave_comments listener (using local cache):', err);
@@ -423,23 +457,8 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     };
   }, [currentEnv]);
 
-  // Ensure all statutory Belgian public holidays are automatically registered as approved leave for everyone
-  useEffect(() => {
-    if (staffList.length === 0) return;
-    const { updatedRequests, newRequests } = syncBelgianPublicHolidays(leaveRequests, staffList);
-    if (newRequests.length > 0) {
-      setLeaveRequests(updatedRequests);
-      try {
-        localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(updatedRequests));
-      } catch (e) {}
-
-      // Resilient background write to Firestore for new holiday requests
-      newRequests.forEach(req => {
-        setDoc(docRef('leave_requests', req.id), sanitizeForFirestore(req))
-          .catch(err => console.warn('Firestore holiday leave write:', err));
-      });
-    }
-  }, [staffList, leaveRequests.length]);
+  // Note: Official Belgian statutory holidays are calculated and displayed on the fly
+  // by date using getBelgianHoliday, without requiring redundant Firestore write traffic.
 
   const fetchBackupStatus = async () => {
     try {
@@ -476,6 +495,13 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
+    // Server-backed persistence
+    fetch('/api/leave/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newComment)
+    }).catch(err => console.warn('Server comment save failed:', err));
+
     // Non-blocking Firestore sync
     setDoc(docRef('leave_comments', newId), sanitizeForFirestore(newComment))
       .catch(err => console.warn('Firestore comment write failed, saved locally:', err));
@@ -491,6 +517,12 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       } catch (e) {}
       return next;
     });
+
+    fetch('/api/leave/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: commentId, archived: true, deleted_at: deletedAt })
+    }).catch(err => console.warn('Server comment archive failed:', err));
 
     updateDoc(docRef('leave_comments', commentId), {
       archived: true,
@@ -508,6 +540,12 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
+    fetch('/api/leave/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: commentId, archived: false, deleted_at: null })
+    }).catch(err => console.warn('Server comment restore failed:', err));
+
     updateDoc(docRef('leave_comments', commentId), {
       archived: false,
       deleted_at: null
@@ -523,6 +561,9 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       } catch (e) {}
       return next;
     });
+
+    fetch(`/api/leave/comments/${commentId}`, { method: 'DELETE' })
+      .catch(err => console.warn('Server comment permanent delete failed:', err));
 
     deleteDoc(docRef('leave_comments', commentId))
       .catch(err => console.warn('Firestore comment permanent delete failed, removed locally:', err));
@@ -545,6 +586,12 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
+    fetch('/api/leave/todos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newTodo)
+    }).catch(err => console.warn('Server todo save failed:', err));
+
     setDoc(docRef('leave_todos', newId), sanitizeForFirestore(newTodo))
       .catch(err => console.warn('Firestore todo write failed, saved locally:', err));
   };
@@ -557,6 +604,12 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       } catch (e) {}
       return next;
     });
+
+    fetch('/api/leave/todos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: todoId, is_completed: !currentCompleted, archived: !currentCompleted })
+    }).catch(err => console.warn('Server todo toggle failed:', err));
 
     updateDoc(docRef('leave_todos', todoId), {
       is_completed: !currentCompleted,
@@ -573,6 +626,9 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
+    fetch(`/api/leave/todos/${todoId}`, { method: 'DELETE' })
+      .catch(err => console.warn('Server todo delete failed:', err));
+
     deleteDoc(docRef('leave_todos', todoId))
       .catch(err => console.warn('Firestore todo delete failed, removed locally:', err));
   };
@@ -585,6 +641,12 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       } catch (e) {}
       return next;
     });
+
+    fetch('/api/leave/todos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: todoId, is_completed: false, archived: false })
+    }).catch(err => console.warn('Server todo restore failed:', err));
 
     updateDoc(docRef('leave_todos', todoId), {
       is_completed: false,
@@ -706,7 +768,23 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
     unmarkDeletedLeaveId(updatedRequest.id);
     deletedRequestIdsRef.current.delete(updatedRequest.id);
 
-    // 4. Reliable direct persistence to Firestore
+    // 4. Reliable persistence to server store (cross-browser & refresh resilient)
+    const itemsToPersist = splitDocToWrite ? [updatedRequest, splitDocToWrite] : [updatedRequest];
+    fetch('/api/leave/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(itemsToPersist)
+    }).catch(err => console.warn('Server direct leave write failed:', err));
+
+    if (toDeleteFromDb.length > 0) {
+      fetch('/api/leave/requests/delete-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: toDeleteFromDb })
+      }).catch(err => console.warn('Server batch delete failed:', err));
+    }
+
+    // 5. Reliable direct persistence to Firestore
     if (toDeleteFromDb.length > 0) {
       toDeleteFromDb.forEach(oldId => {
         deletedRequestIdsRef.current.add(oldId);
@@ -724,7 +802,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         await setDoc(docRef('leave_requests', splitDocToWrite.id), sanitizeForFirestore(splitDocToWrite));
       }
     } catch (err) {
-      console.warn('Firestore direct leave write failed, saved in local store:', err);
+      console.warn('Firestore direct leave write failed, saved in server & local store:', err);
     }
   };
 
@@ -799,6 +877,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       keysToClear.forEach(k => {
         deleteDoc(doc(db, 'test_leave_config', `override_${k}`)).catch(() => {});
         deleteDoc(doc(db, 'leave_config', `override_${k}`)).catch(() => {});
+        fetch(`/api/leave/overrides/${k}`, { method: 'DELETE' }).catch(() => {});
       });
     }
 
@@ -816,7 +895,22 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
-    // 2. Persist deletion to Firestore in BOTH test and prod collections
+    // 2. Persist deletion and any split to server store
+    fetch('/api/leave/requests/delete-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: Array.from(idsToDelete) })
+    }).catch(err => console.warn('Server direct leave delete failed:', err));
+
+    if (splitDocToWrite) {
+      fetch('/api/leave/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([splitDocToWrite])
+      }).catch(err => console.warn('Server split leave create failed:', err));
+    }
+
+    // 3. Persist deletion to Firestore in BOTH test and prod collections
     idsToDelete.forEach(id => {
       deleteDoc(doc(db, 'test_leave_requests', id))
         .catch(err => console.warn('Firestore test leave delete failed:', err));
@@ -863,7 +957,14 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
-    // 2. PERSIST COMPLETE DOCUMENT TO FIRESTORE
+    // 2. PERSIST TO SERVER STORE
+    fetch('/api/leave/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([updated])
+    }).catch(err => console.warn('Server switch leave type failed:', err));
+
+    // 3. PERSIST COMPLETE DOCUMENT TO FIRESTORE
     if (existing) {
       setDoc(docRef('leave_requests', requestId), sanitizeForFirestore(updated), { merge: true })
         .catch(err => console.warn('Firestore switch leave type failed:', err));
@@ -930,6 +1031,24 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
+    // Server-backed persistence
+    fetch('/api/leave/overrides', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: overrideKey, status })
+    }).catch(err => console.warn('Server shift override failed:', err));
+
+    if (docToDelete) {
+      fetch(`/api/leave/requests/${docToDelete}`, { method: 'DELETE' }).catch(() => {});
+    }
+    if (splitDocToWrite) {
+      fetch('/api/leave/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([splitDocToWrite])
+      }).catch(() => {});
+    }
+
     // 3. Persist to Firestore
     if (docToDelete) {
       deleteDoc(docRef('leave_requests', docToDelete))
@@ -962,6 +1081,9 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       } catch (e) {}
       return next;
     });
+
+    fetch(`/api/leave/overrides/${overrideKey}`, { method: 'DELETE' })
+      .catch(err => console.warn('Server clear shift override failed:', err));
 
     deleteDoc(docRef('leave_config', `override_${overrideKey}`))
       .catch(err => console.warn('Firestore delete shift override failed:', err));
@@ -1005,6 +1127,13 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
+    // Server-backed persistence
+    fetch('/api/leave/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([updated])
+    }).catch(err => console.warn('Server update leave status failed:', err));
+
     try {
       if (existing) {
         // ALWAYS write the complete sanitized document so staff_id, date, slot etc. are never lost!
@@ -1035,6 +1164,12 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
+    fetch('/api/leave/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([updated])
+    }).catch(err => console.warn('Server update leave note failed:', err));
+
     try {
       if (existing) {
         await setDoc(docRef('leave_requests', requestId), sanitizeForFirestore(updated), { merge: true });
@@ -1060,6 +1195,9 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       } catch (e) {}
       return next;
     });
+
+    fetch(`/api/leave/requests/${requestId}`, { method: 'DELETE' })
+      .catch(err => console.warn('Server delete leave request failed:', err));
 
     try {
       await deleteDoc(doc(db, 'test_leave_requests', requestId));
@@ -1102,6 +1240,13 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       return next;
     });
 
+    // Server-backed persistence
+    fetch('/api/leave/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(approvedList)
+    }).catch(err => console.warn('Server batch approve failed:', err));
+
     // 3. Persist ALL approved requests to Firestore in safe chunks
     try {
       const batchSize = 400;
@@ -1133,6 +1278,11 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       } catch (e) {
         console.warn('Could not save updated staff to localStorage', e);
       }
+      fetch('/api/leave/staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next)
+      }).catch(err => console.warn('Server update staff schedule failed:', err));
       return next;
     });
 
@@ -1144,6 +1294,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         if (key.startsWith(`${staffId}_`)) {
           delete next[key];
           changed = true;
+          fetch(`/api/leave/overrides/${key}`, { method: 'DELETE' }).catch(() => {});
         }
       });
       if (changed) {
@@ -1178,6 +1329,11 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       try {
         localStorage.setItem(getEnvStorageKey('derm_leave_staff_store'), JSON.stringify(next));
       } catch (e) {}
+      fetch('/api/leave/staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next)
+      }).catch(err => console.warn('Server add staff failed:', err));
       return next;
     });
     try {
@@ -1205,6 +1361,11 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       try {
         localStorage.setItem(getEnvStorageKey('derm_leave_staff_store'), JSON.stringify(next));
       } catch (e) {}
+      fetch('/api/leave/staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next)
+      }).catch(err => console.warn('Server update staff member failed:', err));
       return next;
     });
     try {
@@ -1226,6 +1387,12 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
 
   // --- CASCADE DELETE ---
   const handleCascadeDeleteStaffMember = async (staffId: string) => {
+    fetch('/api/leave/staff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(staffList.filter(s => s.id !== staffId))
+    }).catch(() => {});
+
     const batch = writeBatch(db);
 
     // 1. Delete leave_staff doc AND staff doc
@@ -1322,6 +1489,13 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
       localStorage.setItem(getEnvStorageKey('derm_leave_requests_store'), JSON.stringify(restored));
     } catch (e) {}
 
+    // Server-backed persistence
+    fetch('/api/leave/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(restored)
+    }).catch(err => console.warn('Server restore requests failed:', err));
+
     // 2. Overwrite in Firestore
     try {
       const snap = await getDocs(col('leave_requests'));
@@ -1397,7 +1571,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
             }`}
           >
             <Sparkles className="w-4 h-4" />
-            Teller Verplicht Verlof
+            Teller Verlof
           </button>
 
           {/* Tab 5: Vast Werkschema */}
@@ -1538,7 +1712,6 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
         <CompulsoryLeaveCounterSubmodule
           staffList={staffList}
           leaveRequests={leaveRequests}
-          onDeleteRequest={handleDeleteLeaveRequest}
         />
       )}
 
