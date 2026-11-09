@@ -60,6 +60,7 @@ import {
   Download,
   RotateCcw
 } from 'lucide-react';
+import { formatBelgianTimeHM } from '../../services/belgianTime';
 
 type SubTab =
   | 'week_overview'
@@ -1449,7 +1450,7 @@ export const LeavePlanningModule: React.FC<LeavePlanningModuleProps> = ({
           spreadsheetUrl: result.spreadsheetUrl,
           lastBackupAt: result.timestamp,
           lastBackupStatus: 'Success',
-          lastBackupMessage: `Backup direct bijgewerkt om ${new Date().toLocaleTimeString('nl-BE')}.`
+          lastBackupMessage: `Backup direct bijgewerkt om ${formatBelgianTimeHM(new Date())}.`
         }));
         // Also inform backend
         await fetch('/api/leave/trigger-sheets-backup', {

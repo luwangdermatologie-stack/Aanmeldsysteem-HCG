@@ -32,6 +32,7 @@ import {
   WifiOff
 } from 'lucide-react';
 import { VirtualKeyboard } from './VirtualKeyboard';
+import { formatBelgianTimeHM, formatBelgianTimeHMS } from '../services/belgianTime';
 
 interface KioskAppProps {
   doctors: Doctor[];
@@ -467,7 +468,7 @@ export default function KioskApp({
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      setCurrentTimeStr(now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setCurrentTimeStr(formatBelgianTimeHMS(now));
     };
     updateTime();
     const interval = setInterval(updateTime, 1000);
@@ -738,7 +739,7 @@ export default function KioskApp({
       const message = `👥 **Kiosk Balie Activiteit**: Er heeft zich zojuist een **niet-patiënt** (bv. leverancier / vertegenwoordiger) aangemeld bij de baliekiosk. Gelieve naar de receptie te gaan.`;
       onTeamsNotify(message, 'Ondersteunende Medewerker', {
         type: 'non_patient',
-        time: new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })
+        time: formatBelgianTimeHM(new Date())
       });
 
       setCurrentScreen('f2_success');
@@ -778,7 +779,7 @@ export default function KioskApp({
     onTeamsNotify(message, 'Ondersteunende Medewerker', {
       type: 'patient_info',
       patientName: `${firstName} ${lastName}`,
-      time: new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })
+      time: formatBelgianTimeHM(new Date())
     });
 
     setShowVirtualKeyboard(false);
@@ -876,18 +877,6 @@ export default function KioskApp({
                 <span className="text-xs sm:text-sm font-medium text-slate-500 mt-2 text-center max-w-[240px]">
                   Aangemeld voor inlichtingen of levering
                 </span>
-              </button>
-            </div>
-
-            <div className="mt-8 flex justify-center w-full">
-              <button
-                id="btn-kiosk-help"
-                onClick={handleHelpClick}
-                disabled={helpCooldown}
-                className="group relative flex items-center justify-center gap-3 py-4 px-6 rounded-2xl bg-white/80 hover:bg-white border border-black/10 text-slate-700 hover:text-slate-900 font-bold text-sm sm:text-base shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer w-full max-w-md disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-md active:scale-98"
-              >
-                <Info className="h-5 w-5 sm:h-6 sm:w-6 text-[#0071E3] shrink-0" />
-                <span>{t.helpBtnText}</span>
               </button>
             </div>
           </div>

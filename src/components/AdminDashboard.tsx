@@ -9,6 +9,12 @@ import GoogleSheetsBackupSection from './GoogleSheetsBackupSection';
 import { LeavePlanningModule } from './leave/LeavePlanningModule';
 import { TeamsChatAndLogModule } from './TeamsChatAndLogModule';
 import { syncStaffBetweenConfigAndLeave, formatBelgianDate } from '../services/leaveService';
+import { 
+  getBelgianDateString, 
+  formatBelgianTimeHM, 
+  formatBelgianTimeHMS, 
+  parseBelgianDateTimeToIso 
+} from '../services/belgianTime';
 import { getDetectedEnvironment, setEnvironmentOverride, isTestEnvironment, AppEnvironment } from '../config/environment';
 import { cloneProductionStaffToTest, resetTestDatabase } from '../firebase';
 import { 
@@ -181,7 +187,9 @@ export default function AdminDashboard({
 
   const smartphoneAppUrl = React.useMemo(() => {
     if (typeof window === 'undefined') return '';
-    return `${window.location.origin}${window.location.pathname}?view=tiktijden`;
+    const currentDetectedEnv = getDetectedEnvironment();
+    const envParam = currentDetectedEnv ? `&env=${currentDetectedEnv}` : '';
+    return `${window.location.origin}${window.location.pathname}?view=tiktijden${envParam}`;
   }, []);
 
   React.useEffect(() => {
@@ -328,7 +336,7 @@ export default function AdminDashboard({
           payload: {
             "Meldingstype": "Systeemverbindingstest",
             "Status": "Koppeling live! ✅",
-            "Tijdstip": new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' }),
+            "Tijdstip": formatBelgianTimeHM(new Date()),
             "Details": "Dit is een automatisch gegenereerde test om de webhook-respons en payloads te verifiëren."
           }
         })
@@ -654,8 +662,8 @@ export default function AdminDashboard({
       id: editingTsId || `ts-${Date.now()}`,
       staffId: editingTsStaff,
       staffName: staffMember.name,
-      clockIn: new Date(`${editingTsDate}T${editingTsIn}`).toISOString(),
-      clockOut: editingTsOut ? new Date(`${editingTsDate}T${editingTsOut}`).toISOString() : null,
+      clockIn: parseBelgianDateTimeToIso(editingTsDate, editingTsIn),
+      clockOut: editingTsOut ? parseBelgianDateTimeToIso(editingTsDate, editingTsOut) : null,
       date: editingTsDate
     });
     setIsEditingTs(false);
@@ -667,19 +675,17 @@ export default function AdminDashboard({
       setEditingTsId(ts.id);
       setEditingTsStaff(ts.staffId);
       setEditingTsDate(ts.date);
-      const inDate = new Date(ts.clockIn);
-      setEditingTsIn(inDate.toTimeString().slice(0, 5));
+      setEditingTsIn(formatBelgianTimeHM(ts.clockIn, '08:30'));
       if (ts.clockOut) {
-        const outDate = new Date(ts.clockOut);
-        setEditingTsOut(outDate.toTimeString().slice(0, 5));
+        setEditingTsOut(formatBelgianTimeHM(ts.clockOut, ''));
       } else {
         setEditingTsOut('');
       }
     } else {
       setEditingTsId('');
       setEditingTsStaff(activeStaffList[0]?.id || '');
-      setEditingTsDate(new Date().toISOString().slice(0, 10));
-      setEditingTsIn(new Date().toTimeString().slice(0, 5));
+      setEditingTsDate(getBelgianDateString());
+      setEditingTsIn(formatBelgianTimeHM(new Date(), '08:30'));
       setEditingTsOut('');
     }
     setIsEditingTs(true);
@@ -690,7 +696,8 @@ export default function AdminDashboard({
     if (!staffMember) return;
 
     const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10);
+    const dateStr = getBelgianDateString(now);
+    const timeDisplay = formatBelgianTimeHM(now);
 
     if (isClockIn) {
       onUpdateTimesheet({
@@ -701,7 +708,7 @@ export default function AdminDashboard({
         clockOut: null,
         date: dateStr
       });
-      showToast(`${staffMember.name} is succesvol ingeklokt.`, "success");
+      showToast(`${staffMember.name} is succesvol ingeklokt om ${timeDisplay}.`, "success");
     } else {
       // Find open timesheet for this staff member today
       const openTs = timesheets.find(ts => ts.staffId === staffId && ts.date === dateStr && !ts.clockOut);
@@ -710,7 +717,7 @@ export default function AdminDashboard({
           ...openTs,
           clockOut: now.toISOString()
         });
-        showToast(`${staffMember.name} is succesvol uitgeklokt.`, "success");
+        showToast(`${staffMember.name} is succesvol uitgeklokt om ${timeDisplay}.`, "success");
       } else {
         showToast(`Geen openstaande intik gevonden voor ${staffMember.name} vandaag.`, "warning");
       }
@@ -1039,31 +1046,6 @@ export default function AdminDashboard({
             <Settings className="h-3.5 w-3.5 text-[#0071E3]" />
             Configuratie & Reset
           </button>
-        </div>
-
-        {/* Quick button to open / share the Smartphone Tiktijden App */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowSmartphoneModal(true)}
-            className="px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 shadow-2xs text-xs"
-            title="Toon QR-code en smartphone link voor medewerkers"
-          >
-            <QrCode className="h-3.5 w-3.5 text-indigo-600" />
-            <span className="hidden sm:inline">QR-Code Medewerkers</span>
-          </button>
-
-          {onSwitchView && (
-            <button
-              type="button"
-              onClick={() => onSwitchView('tiktijden')}
-              className="px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white shadow-xs text-xs"
-              title="Open de aparte smartphone app voor medewerkers"
-            >
-              <Smartphone className="h-3.5 w-3.5" />
-              <span>📱 Smartphone App</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -2170,48 +2152,6 @@ export default function AdminDashboard({
                 )}
               </div>
             </div>
-
-            {/* PROMINENT SMARTPHONE APP HERO CARD */}
-            <div className="bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white p-4 rounded-2xl border border-indigo-700/40 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-start sm:items-center gap-3.5">
-                <div className="h-12 w-12 rounded-2xl bg-indigo-600/60 border border-indigo-400/30 flex items-center justify-center text-white shrink-0 shadow-md">
-                  <Smartphone className="h-6 w-6 text-indigo-200" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-black text-sm sm:text-base tracking-tight text-white">
-                      Aparte Smartphone App voor Medewerkers
-                    </h4>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      Live Cloud Sync
-                    </span>
-                  </div>
-                  <p className="text-xs text-indigo-200/90 mt-0.5 leading-relaxed">
-                    Medewerkers hoeven niet meer op de computer te zoeken. Laat hen de QR-code scannen of stuur de link: ze kunnen op hun eigen smartphone met 1 klik in- en uitklokken!
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowSmartphoneModal(true)}
-                  className="px-4 py-2 rounded-xl bg-white text-slate-900 hover:bg-indigo-50 font-extrabold text-xs transition flex items-center gap-1.5 shadow-md cursor-pointer"
-                >
-                  <QrCode className="h-4 w-4 text-indigo-600" />
-                  <span>Toon QR-code</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCopySmartphoneLink}
-                  className="px-3.5 py-2 rounded-xl bg-indigo-800/80 hover:bg-indigo-700 text-indigo-100 font-bold text-xs border border-indigo-600/50 transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  {copiedSmartphoneLink ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
-                  <span>{copiedSmartphoneLink ? 'Gekopieerd!' : 'Kopieer Link'}</span>
-                </button>
-              </div>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Left Column: Quick Actions */}
               <div className="md:col-span-1 space-y-4">
@@ -2219,7 +2159,7 @@ export default function AdminDashboard({
                   <h4 className="font-bold text-sm text-slate-700 mb-3">Snel In/Uit Klokken</h4>
                   <div className="flex flex-col gap-2">
                     {activeStaffList.map(staff => {
-                      const todayStr = new Date().toISOString().slice(0, 10);
+                      const todayStr = getBelgianDateString();
                       const openTs = timesheets.find(ts => ts.staffId === staff.id && ts.date === todayStr && !ts.clockOut);
                       return (
                         <div key={staff.id} className="flex justify-between items-center p-2 bg-white rounded-lg border border-slate-100 shadow-sm text-xs">
@@ -2381,17 +2321,11 @@ export default function AdminDashboard({
                               let outTimeStr: string | null = null;
 
                               if (ts.clockIn) {
-                                const inDate = new Date(ts.clockIn);
-                                if (!isNaN(inDate.getTime())) {
-                                  inTimeStr = inDate.toTimeString().slice(0, 5);
-                                }
+                                inTimeStr = formatBelgianTimeHM(ts.clockIn);
                               }
 
                               if (ts.clockOut) {
-                                const outDate = new Date(ts.clockOut);
-                                if (!isNaN(outDate.getTime())) {
-                                  outTimeStr = outDate.toTimeString().slice(0, 5);
-                                }
+                                outTimeStr = formatBelgianTimeHM(ts.clockOut);
                               }
 
                               if (ts.clockIn && ts.clockOut) {
@@ -2419,7 +2353,16 @@ export default function AdminDashboard({
                                     <button onClick={() => handleStartEditTs(ts)} className="text-slate-400 hover:text-indigo-600 transition cursor-pointer" title="Bewerk">
                                       <Pencil className="h-3.5 w-3.5 inline" />
                                     </button>
-                                    <button onClick={() => { if(confirm('Tiktijd verwijderen?')) onDeleteTimesheet(ts.id); }} className="text-slate-400 hover:text-red-500 transition cursor-pointer" title="Verwijder">
+                                    <button 
+                                      onClick={() => { 
+                                        if (confirm(`Tiktijd van ${ts.staffName || 'medewerker'} definitief verwijderen?`)) {
+                                          onDeleteTimesheet(ts.id);
+                                          showToast("Tiktijd definitief verwijderd.", "success");
+                                        }
+                                      }} 
+                                      className="text-slate-400 hover:text-red-500 transition cursor-pointer p-1 rounded-md hover:bg-red-50" 
+                                      title="Verwijder"
+                                    >
                                       <Trash2 className="h-3.5 w-3.5 inline" />
                                     </button>
                                   </td>

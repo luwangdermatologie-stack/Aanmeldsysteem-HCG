@@ -55,17 +55,21 @@ export interface SystemConfig {
   gdprAutoAnonymize?: boolean; // Nightly / periodic auto-anonymization
   gdprRetentionHours?: number; // E.g. 24, 48, 72 hours
   lastGdprRun?: string; // ISO timestamp
-  // Google Sheets Timesheet Backup
-  googleSheetsBackupEnabled?: boolean; // Daily auto backup at 22:00
-  googleSheetsBackupHour?: number; // 22 by default
+  // Google Sheets Timesheet & Leave Planning Weekly Backup (Every Sunday)
+  googleSheetsBackupEnabled?: boolean; // Wekelijkse auto backup op zondag
+  googleSheetsBackupFrequency?: 'weekly'; // Wekelijks op zondag
+  googleSheetsBackupHour?: number; // 22 (22:00) by default
   googleSheetsSpreadsheetId?: string;
   googleSheetsSpreadsheetUrl?: string;
   leaveGoogleSheetsSpreadsheetId?: string;
   leaveGoogleSheetsSpreadsheetUrl?: string;
   lastGoogleSheetsBackupAt?: string;
+  lastGoogleSheetsBackupSunday?: string; // YYYY-MM-DD van de gebackupte zondag
   lastGoogleSheetsBackupStatus?: 'Success' | 'Failed' | 'Never' | 'InProgress';
   lastGoogleSheetsBackupMessage?: string;
   lastGoogleSheetsBackupCount?: number;
+  lastLeaveBackupAt?: string;
+  lastLeaveBackupCount?: number;
 }
 
 export interface TeamsNotification {

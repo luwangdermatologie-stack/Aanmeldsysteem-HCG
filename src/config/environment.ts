@@ -12,6 +12,22 @@ const STORAGE_KEY_ENV_OVERRIDE = 'hcg_environment_override';
  * or in the active GitHub production environment.
  */
 export function getDetectedEnvironment(): AppEnvironment {
+  // 0. Check explicit URL query parameter ?env=production or ?env=test
+  if (typeof window !== 'undefined' && window.location) {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const envParam = searchParams.get('env');
+      if (envParam === 'production' || envParam === 'prod') {
+        return 'production';
+      }
+      if (envParam === 'test' || envParam === 'dev') {
+        return 'test';
+      }
+    } catch {
+      // Ignore URL search parsing errors
+    }
+  }
+
   // 1. Check if the administrator manually selected an override in localStorage
   if (typeof window !== 'undefined' && window.localStorage) {
     try {

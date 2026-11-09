@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../firebase';
 import { Timesheet, ActiveStaff } from '../types';
+import { formatBelgianTimeHM } from './belgianTime';
 
 export const GOOGLE_WORKSPACE_SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
@@ -26,8 +27,64 @@ provider.setCustomParameters({
 
 // Flag to track sign-in in flight
 let isSigningIn = false;
-// Cached access token in memory (never written to localStorage)
+// Cached access token in memory with resilient session/local storage fallback
 let cachedAccessToken: string | null = null;
+const TOKEN_KEY = 'hcg_google_workspace_token';
+const TOKEN_EXPIRY_KEY = 'hcg_google_workspace_token_exp';
+
+/**
+ * Get current cached access token with persistent storage fallback
+ */
+export const getAccessToken = (): string | null => {
+  if (cachedAccessToken) return cachedAccessToken;
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
+      const expStr = sessionStorage.getItem(TOKEN_EXPIRY_KEY) || localStorage.getItem(TOKEN_EXPIRY_KEY);
+      if (stored) {
+        if (expStr && Date.now() > parseInt(expStr, 10)) {
+          sessionStorage.removeItem(TOKEN_KEY);
+          sessionStorage.removeItem(TOKEN_EXPIRY_KEY);
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(TOKEN_EXPIRY_KEY);
+          cachedAccessToken = null;
+          return null;
+        }
+        cachedAccessToken = stored;
+        return stored;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+};
+
+/**
+ * Manually set or update cached access token in memory and storage
+ */
+export const setCachedAccessToken = (token: string | null) => {
+  cachedAccessToken = token;
+  if (typeof window !== 'undefined') {
+    try {
+      if (token) {
+        // Google access tokens live for 60 minutes; keep safe expiry to 55 minutes
+        const exp = Date.now() + 55 * 60 * 1000;
+        sessionStorage.setItem(TOKEN_KEY, token);
+        sessionStorage.setItem(TOKEN_EXPIRY_KEY, exp.toString());
+        localStorage.setItem(TOKEN_KEY, token);
+        localStorage.setItem(TOKEN_EXPIRY_KEY, exp.toString());
+      } else {
+        sessionStorage.removeItem(TOKEN_KEY);
+        sessionStorage.removeItem(TOKEN_EXPIRY_KEY);
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(TOKEN_EXPIRY_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }
+};
 
 /**
  * Initialize auth listener to monitor Google session and token
@@ -37,10 +94,13 @@ export const initGoogleAuth = (
   onFailure: () => void
 ) => {
   return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user && cachedAccessToken) {
-      onSuccess(user, cachedAccessToken);
+    const token = getAccessToken();
+    if (user && token) {
+      onSuccess(user, token);
     } else if (!isSigningIn) {
-      cachedAccessToken = null;
+      if (!user) {
+        setCachedAccessToken(null);
+      }
       onFailure();
     }
   });
@@ -57,8 +117,8 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     if (!credential?.accessToken) {
       throw new Error('Geen geldige Google OAuth access token ontvangen.');
     }
-    cachedAccessToken = credential.accessToken;
-    return { user: result.user, accessToken: cachedAccessToken };
+    setCachedAccessToken(credential.accessToken);
+    return { user: result.user, accessToken: credential.accessToken };
   } catch (error: any) {
     const isCancelledByUser =
       error?.code === 'auth/popup-closed-by-user' ||
@@ -84,25 +144,11 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 /**
- * Get current cached access token
- */
-export const getAccessToken = (): string | null => {
-  return cachedAccessToken;
-};
-
-/**
- * Manually set or update cached access token
- */
-export const setCachedAccessToken = (token: string | null) => {
-  cachedAccessToken = token;
-};
-
-/**
  * Sign out of Google session
  */
 export const googleLogout = async () => {
   await signOut(auth);
-  cachedAccessToken = null;
+  setCachedAccessToken(null);
 };
 
 /**
@@ -155,14 +201,7 @@ export const calculateTimesheetDuration = (clockIn?: string, clockOut?: string |
  * Helper to format ISO timestamp to Belgian time HH:mm
  */
 const formatTimeOnly = (iso?: string | null): string => {
-  if (!iso) return '-';
-  try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '-';
-    return d.toTimeString().slice(0, 5);
-  } catch {
-    return '-';
-  }
+  return formatBelgianTimeHM(iso, '-');
 };
 
 /**
@@ -304,6 +343,7 @@ export const backupTimesheetsToGoogleSheets = async (
   const spreadsheetId = sheetMeta.id;
   const nowIso = new Date().toISOString();
   const formattedSyncTime = new Date().toLocaleTimeString('nl-BE', {
+    timeZone: 'Europe/Brussels',
     hour: '2-digit',
     minute: '2-digit',
     day: '2-digit',

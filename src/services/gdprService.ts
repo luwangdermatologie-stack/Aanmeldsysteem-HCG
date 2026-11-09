@@ -6,6 +6,7 @@
 import { getDocs, writeBatch, updateDoc, setDoc } from 'firebase/firestore';
 import { db, col, docRef, sanitizeForFirestore, handleFirestoreError, OperationType } from '../firebase';
 import { Patient, SystemConfig } from '../types';
+import { formatBelgianTimeHMS } from './belgianTime';
 
 /**
  * Anonymizes an individual patient's personal identifiers according to GDPR (AVG) guidelines.
@@ -90,7 +91,7 @@ export async function executeGdprAnonymization(
       const notifId = `gdpr-${Date.now()}`;
       const auditEntry = {
         id: notifId,
-        timestamp: new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        timestamp: formatBelgianTimeHMS(new Date()),
         targetDoctor: 'GDPR / Functionaris Gegevensbescherming',
         message: `🛡️ **GDPR Gegevensretentie Uitgevoerd**: ${anonymizedCount} patiëntendossier(s) zijn succesvol geanonimiseerd conform de bewaartermijn van ${retentionHours} uur.`,
         isRead: false

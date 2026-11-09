@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
-import { Timesheet, ActiveStaff, SystemConfig } from '../types';
+import { Timesheet, ActiveStaff, SystemConfig, StaffMember, LeaveRequest } from '../types';
 import {
   initGoogleAuth,
   googleSignIn,
@@ -13,6 +13,9 @@ import {
   getAccessToken,
   backupTimesheetsToGoogleSheets
 } from '../services/googleSheetsService';
+import { backupLeaveToGoogleSheets } from '../services/leaveSheetsBackup';
+import { col } from '../firebase';
+import { getDocs } from 'firebase/firestore';
 import {
   FileSpreadsheet,
   ExternalLink,
@@ -150,25 +153,56 @@ export default function GoogleSheetsBackupSection({
     setSyncFeedback(null);
 
     try {
-      const result = await backupTimesheetsToGoogleSheets(
+      // 1. Synchronize Timesheets (Tiktijden)
+      const timesheetResult = await backupTimesheetsToGoogleSheets(
         token,
         timesheets,
         staffList,
         systemConfig.googleSheetsSpreadsheetId
       );
 
+      // 2. Synchronize Leave Planning (Verlofplanning)
+      let leaveResult: { spreadsheetId: string; spreadsheetUrl: string; timestamp: string } | null = null;
+      let leaveCount = 0;
+      try {
+        const [leaveStaffSnap, leaveReqSnap] = await Promise.all([
+          getDocs(col('leave_staff')),
+          getDocs(col('leave_requests'))
+        ]);
+        const leaveStaffList: StaffMember[] = [];
+        leaveStaffSnap.forEach(d => leaveStaffList.push(d.data() as StaffMember));
+
+        const leaveRequestsList: LeaveRequest[] = [];
+        leaveReqSnap.forEach(d => leaveRequestsList.push(d.data() as LeaveRequest));
+        leaveCount = leaveRequestsList.length;
+
+        leaveResult = await backupLeaveToGoogleSheets(
+          token,
+          leaveStaffList,
+          leaveRequestsList,
+          systemConfig.leaveGoogleSheetsSpreadsheetId || systemConfig.googleSheetsSpreadsheetId
+        );
+      } catch (lErr) {
+        console.warn('Verlofplanning backup warning in manual sync:', lErr);
+      }
+
+      const nowTimestamp = new Date().toISOString();
       onUpdateConfig({
-        googleSheetsSpreadsheetId: result.spreadsheetId,
-        googleSheetsSpreadsheetUrl: result.spreadsheetUrl,
-        lastGoogleSheetsBackupAt: result.timestamp,
+        googleSheetsSpreadsheetId: timesheetResult.spreadsheetId,
+        googleSheetsSpreadsheetUrl: timesheetResult.spreadsheetUrl,
+        leaveGoogleSheetsSpreadsheetId: leaveResult?.spreadsheetId || systemConfig.leaveGoogleSheetsSpreadsheetId,
+        leaveGoogleSheetsSpreadsheetUrl: leaveResult?.spreadsheetUrl || systemConfig.leaveGoogleSheetsSpreadsheetUrl,
+        lastGoogleSheetsBackupAt: nowTimestamp,
         lastGoogleSheetsBackupStatus: 'Success',
-        lastGoogleSheetsBackupCount: result.count,
-        lastGoogleSheetsBackupMessage: `${result.count} tiktijden bewaard in Google Sheets.`
+        lastGoogleSheetsBackupCount: timesheetResult.count,
+        lastLeaveBackupAt: nowTimestamp,
+        lastLeaveBackupCount: leaveCount,
+        lastGoogleSheetsBackupMessage: `${timesheetResult.count} tiktijden en ${leaveCount} verlofaanvragen bewaard in Google Sheets.`
       });
 
       setSyncFeedback({
         type: 'success',
-        message: `Succesvol gebackupt! ${result.count} tiktijden opgeslagen in uw Google Sheets document.`
+        message: `Succesvol gebackupt! ${timesheetResult.count} tiktijden en ${leaveCount} verlofaanvragen opgeslagen in Google Sheets.`
       });
     } catch (err: any) {
       console.error('Sync failed:', err);
@@ -195,9 +229,9 @@ export default function GoogleSheetsBackupSection({
           </div>
           <div>
             <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2 flex-wrap">
-              Google Sheets Tiktijden Backup
+              Google Sheets Tiktijden & Verlofplanning Backup
               <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
-                Elke avond om 22:00
+                Wekelijks op zondag om 22:00
               </span>
             </h4>
           </div>
@@ -396,20 +430,20 @@ export default function GoogleSheetsBackupSection({
                 <FileSpreadsheet className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-800 text-sm">Synchroniseer naar Google Sheets</h3>
-                <p className="text-xs text-slate-500">Personeel tiktijden bijwerken</p>
+                <h3 className="font-bold text-slate-800 text-sm">Wekelijkse Synchronisatie naar Google Sheets</h3>
+                <p className="text-xs text-slate-500">Tiktijden en verlofplanning archiveren</p>
               </div>
             </div>
 
             <div className="text-xs text-slate-600 space-y-2">
               <p>
-                U staat op het punt om <span className="font-bold text-slate-800">{timesheets.length} tiktijden</span> te exporteren en synchroniseren naar het Google Sheets document:
+                U staat op het punt om de actuele personeelstiktijden (<span className="font-bold text-slate-800">{timesheets.length} tiktijden</span>) en de volledige <span className="font-bold text-slate-800">verlofplanning</span> (geplande & aangevraagde verloven) te synchroniseren naar het Google Sheets document:
               </p>
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 font-mono text-[11px] text-slate-700">
-                Document: DermatoMed - Personeel Tiktijden Historiek & Backup
+                Document: DermatoMed - Tiktijden Historiek & Verlofplanning
               </div>
               <p className="text-[11px] text-emerald-700 bg-emerald-50 p-2 rounded border border-emerald-200">
-                ✓ Alle eerdere historische records in de sheet blijven bewaard en worden chronologisch samengevoegd.
+                ✓ Zowel de tiktijdenhistoriek als de geplande verloven worden chronologisch samengevoegd en bewaard.
               </p>
             </div>
 

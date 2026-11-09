@@ -17,6 +17,7 @@ import {
   UserCheck,
   Code
 } from 'lucide-react';
+import { formatBelgianTimeHM } from '../services/belgianTime';
 
 interface TeamsChatAndLogModuleProps {
   notifications: TeamsNotification[];
@@ -77,7 +78,7 @@ export const TeamsChatAndLogModule: React.FC<TeamsChatAndLogModuleProps> = ({
       urgency,
       Naam: activeStaffName,
       Dokter: targetLabel,
-      Tijdstip: new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' }),
+      Tijdstip: formatBelgianTimeHM(new Date()),
       Bericht: chatMessage.trim(),
       Kanaal: targetLabel
     };

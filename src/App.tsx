@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timesheet } from './types';
+import { Patient, Doctor, ActiveStaff, SystemConfig, TeamsNotification, Timesheet, StaffMember, LeaveRequest } from './types';
 import KioskApp from './components/KioskApp';
 import AdminDashboard from './components/AdminDashboard';
 import PinLockModal from './components/PinLockModal';
@@ -12,7 +12,14 @@ import MobileTimesheetApp from './components/MobileTimesheetApp';
 import { UpdateNotificationBanner } from './components/UpdateNotificationBanner';
 import { executeGdprAnonymization } from './services/gdprService';
 import { getAccessToken, backupTimesheetsToGoogleSheets } from './services/googleSheetsService';
+import { backupLeaveToGoogleSheets } from './services/leaveSheetsBackup';
 import { syncStaffBetweenConfigAndLeave, isDummyPersonnel } from './services/leaveService';
+import { 
+  getBelgianDateString, 
+  formatBelgianTimeHM, 
+  formatBelgianTimeHMS, 
+  getBelgianHour 
+} from './services/belgianTime';
 import { 
   Monitor, 
   RotateCcw, 
@@ -30,7 +37,44 @@ import {
   Smartphone
 } from 'lucide-react';
 import { db, col, docRef, getDetectedEnvironment, initializeDatabaseIfEmpty, handleFirestoreError, OperationType, sanitizeForFirestore } from './firebase';
-import { setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, getDocs } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, getDocs } from 'firebase/firestore';
+
+const DELETED_TS_STORAGE_KEY = 'hcg_deleted_timesheet_ids';
+
+function getDeletedTimesheetIds(): Set<string> {
+  if (typeof window === 'undefined' || !window.localStorage) return new Set();
+  try {
+    const raw = localStorage.getItem(DELETED_TS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function recordDeletedTimesheetId(id: string) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const current = getDeletedTimesheetIds();
+    current.add(id);
+    const arr = Array.from(current).slice(-500);
+    localStorage.setItem(DELETED_TS_STORAGE_KEY, JSON.stringify(arr));
+  } catch (err) {
+    console.warn("Could not record deleted timesheet tombstone", err);
+  }
+}
+
+function unmarkDeletedTimesheetId(id: string) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const current = getDeletedTimesheetIds();
+    if (current.has(id)) {
+      current.delete(id);
+      localStorage.setItem(DELETED_TS_STORAGE_KEY, JSON.stringify(Array.from(current)));
+    }
+  } catch {}
+}
 
 export default function App() {
   const [viewMode, setViewMode] = useState<'split' | 'kiosk' | 'admin' | 'tiktijden'>(() => {
@@ -119,9 +163,11 @@ export default function App() {
   const [staff, setStaff] = useState<ActiveStaff[]>([]);
   const [timesheets, setTimesheets] = useState<Timesheet[]>(() => {
     try {
+      const deletedIds = getDeletedTimesheetIds();
       const cached = localStorage.getItem('derm_timesheets_store');
       if (cached) {
-        return JSON.parse(cached);
+        const list: Timesheet[] = JSON.parse(cached);
+        return list.filter(ts => ts && ts.id && !deletedIds.has(ts.id));
       }
     } catch (e) {
       console.warn("Could not read local timesheets store", e);
@@ -168,7 +214,7 @@ export default function App() {
     };
   }, [systemConfig.gdprAutoAnonymize, systemConfig.gdprRetentionHours, systemConfig.lastGdprRun]);
 
-  // Automated Daily Backup of Staff Timesheets to Google Sheets at 22:00 (preserving full history)
+  // Automated Weekly Backup of Timesheets & Leave Planning to Google Sheets on Sunday (with catch-up if PC was off)
   useEffect(() => {
     const checkAndRunGoogleSheetsBackup = async () => {
       // If auto-backup is disabled, skip
@@ -178,43 +224,93 @@ export default function App() {
       if (!token) return; // Requires active Google session
 
       const now = new Date();
-      const currentHour = now.getHours(); // 0-23
-      const targetHour = systemConfig.googleSheetsBackupHour ?? 22; // 22:00 every evening
-      const todayStr = now.toISOString().slice(0, 10);
-      const lastRunDate = systemConfig.lastGoogleSheetsBackupAt ? systemConfig.lastGoogleSheetsBackupAt.slice(0, 10) : '';
+      const currentDay = now.getDay(); // 0 is Sunday
+      const currentHour = getBelgianHour(now); // 0-23 in Belgian time
+      const targetHour = systemConfig.googleSheetsBackupHour ?? 22; // Default 22:00
+      const todayStr = getBelgianDateString(now);
 
-      // Trigger when it is 22:00 (or later if missed earlier today) and hasn't backed up today yet
-      if (currentHour >= targetHour && lastRunDate !== todayStr) {
-        console.log(`[Google Sheets Auto-Backup] Dagelijkse avondrun om ${targetHour}:00 gestart...`);
+      // Compute date of most recent Sunday (today if Sunday, else preceding Sunday)
+      const mostRecentSundayDate = new Date(now);
+      mostRecentSundayDate.setDate(now.getDate() - currentDay);
+      const mostRecentSundayStr = getBelgianDateString(mostRecentSundayDate);
+
+      const lastRunSunday = systemConfig.lastGoogleSheetsBackupSunday || '';
+      const lastRunAtDate = systemConfig.lastGoogleSheetsBackupAt ? systemConfig.lastGoogleSheetsBackupAt.slice(0, 10) : '';
+
+      // Determine if we should run:
+      // Condition A: Today IS Sunday, it's at or past targetHour, and hasn't run yet this Sunday
+      const isSundayRunTime = currentDay === 0 && currentHour >= targetHour && lastRunSunday !== todayStr && lastRunAtDate !== todayStr;
+
+      // Condition B: Today is NOT Sunday (e.g. Monday morning), but the most recent Sunday's backup was missed (e.g. clinic PC was off on Sunday)
+      const isMissedSundayCatchUp = currentDay !== 0 && (!lastRunSunday || lastRunSunday < mostRecentSundayStr);
+
+      if (isSundayRunTime || isMissedSundayCatchUp) {
+        const triggerReason = isSundayRunTime
+          ? `Wekelijkse zondagavondrun om ${targetHour}:00 gestart`
+          : `Inhaalrun voor gemiste zondag (${mostRecentSundayStr}) gestart`;
+        console.log(`[Google Sheets Auto-Backup] ${triggerReason}...`);
+
         try {
-          const result = await backupTimesheetsToGoogleSheets(
+          // 1. Synchronize Timesheets (Tiktijden)
+          const timesheetResult = await backupTimesheetsToGoogleSheets(
             token,
             timesheets,
             staff,
             systemConfig.googleSheetsSpreadsheetId
           );
 
+          // 2. Synchronize Leave Planning (Verlofplanning)
+          let leaveResult: { spreadsheetId: string; spreadsheetUrl: string; timestamp: string } | null = null;
+          let leaveCount = 0;
+          try {
+            const [leaveStaffSnap, leaveReqSnap] = await Promise.all([
+              getDocs(col('leave_staff')),
+              getDocs(col('leave_requests'))
+            ]);
+            const leaveStaffList: StaffMember[] = [];
+            leaveStaffSnap.forEach(d => leaveStaffList.push(d.data() as StaffMember));
+
+            const leaveRequestsList: LeaveRequest[] = [];
+            leaveReqSnap.forEach(d => leaveRequestsList.push(d.data() as LeaveRequest));
+            leaveCount = leaveRequestsList.length;
+
+            leaveResult = await backupLeaveToGoogleSheets(
+              token,
+              leaveStaffList,
+              leaveRequestsList,
+              systemConfig.leaveGoogleSheetsSpreadsheetId || systemConfig.googleSheetsSpreadsheetId
+            );
+          } catch (leaveErr) {
+            console.warn('[Google Sheets Auto-Backup] Verlofplanning sync waarschuwing:', leaveErr);
+          }
+
+          const nowTimestamp = new Date().toISOString();
           handleUpdateConfig({
-            googleSheetsSpreadsheetId: result.spreadsheetId,
-            googleSheetsSpreadsheetUrl: result.spreadsheetUrl,
-            lastGoogleSheetsBackupAt: result.timestamp,
+            googleSheetsSpreadsheetId: timesheetResult.spreadsheetId,
+            googleSheetsSpreadsheetUrl: timesheetResult.spreadsheetUrl,
+            leaveGoogleSheetsSpreadsheetId: leaveResult?.spreadsheetId || systemConfig.leaveGoogleSheetsSpreadsheetId,
+            leaveGoogleSheetsSpreadsheetUrl: leaveResult?.spreadsheetUrl || systemConfig.leaveGoogleSheetsSpreadsheetUrl,
+            lastGoogleSheetsBackupAt: nowTimestamp,
+            lastGoogleSheetsBackupSunday: mostRecentSundayStr,
             lastGoogleSheetsBackupStatus: 'Success',
-            lastGoogleSheetsBackupCount: result.count,
-            lastGoogleSheetsBackupMessage: `${result.count} tiktijden succesvol gearchiveerd om 22:00 met historiek.`
+            lastGoogleSheetsBackupCount: timesheetResult.count,
+            lastLeaveBackupAt: nowTimestamp,
+            lastLeaveBackupCount: leaveCount,
+            lastGoogleSheetsBackupMessage: `Wekelijkse zondagbackup voltooid: ${timesheetResult.count} tiktijden en ${leaveCount} verlofaanvragen gearchiveerd.`
           });
-          console.log(`[Google Sheets Auto-Backup] Succesvol voltooid: ${result.count} records gesynchroniseerd.`);
+          console.log(`[Google Sheets Auto-Backup] Succesvol voltooid: ${timesheetResult.count} tiktijden & ${leaveCount} verloven.`);
         } catch (err: any) {
-          console.error('[Google Sheets Auto-Backup] Fout tijdens 22:00 synchronisatie:', err);
+          console.error('[Google Sheets Auto-Backup] Fout tijdens wekelijkse synchronisatie:', err);
           handleUpdateConfig({
             lastGoogleSheetsBackupStatus: 'Failed',
-            lastGoogleSheetsBackupMessage: err.message || 'Fout tijdens automatische backup.'
+            lastGoogleSheetsBackupMessage: err.message || 'Fout tijdens wekelijkse backup op zondag.'
           });
         }
       }
     };
 
     // Check shortly after boot and every 60 seconds
-    const timeout = setTimeout(checkAndRunGoogleSheetsBackup, 6000);
+    const timeout = setTimeout(checkAndRunGoogleSheetsBackup, 5000);
     const interval = setInterval(checkAndRunGoogleSheetsBackup, 60 * 1000);
     return () => {
       clearTimeout(timeout);
@@ -224,7 +320,9 @@ export default function App() {
     systemConfig.googleSheetsBackupEnabled,
     systemConfig.googleSheetsBackupHour,
     systemConfig.googleSheetsSpreadsheetId,
+    systemConfig.leaveGoogleSheetsSpreadsheetId,
     systemConfig.lastGoogleSheetsBackupAt,
+    systemConfig.lastGoogleSheetsBackupSunday,
     timesheets,
     staff
   ]);
@@ -385,51 +483,38 @@ export default function App() {
   // Sync Timesheets
   useEffect(() => {
     const unsubscribe = onSnapshot(col('timesheets'), (snapshot) => {
+      const deletedIds = getDeletedTimesheetIds();
       const firestoreTs: Timesheet[] = [];
-      snapshot.forEach((doc) => {
-        firestoreTs.push(doc.data() as Timesheet);
-      });
 
-      setTimesheets(prev => {
-        const map = new Map<string, Timesheet>();
-        // 1. Keep any existing entries in memory
-        prev.forEach(ts => { if (ts && ts.id) map.set(ts.id, ts); });
-        
-        // 2. Check localStorage backup
-        try {
-          const stored = localStorage.getItem('derm_timesheets_store');
-          if (stored) {
-            const list: Timesheet[] = JSON.parse(stored);
-            list.forEach(ts => { if (ts && ts.id) map.set(ts.id, ts); });
-          }
-        } catch (e) {
-          // ignore error
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Timesheet;
+        const id = docSnap.id || data.id;
+
+        // If this timesheet was explicitly deleted by the user, purge it from Firestore and ignore it
+        if (deletedIds.has(id)) {
+          deleteDoc(docSnap.ref).catch(() => {});
+          deleteDoc(doc(db, 'timesheets', id)).catch(() => {});
+          deleteDoc(doc(db, 'test_timesheets', id)).catch(() => {});
+          return;
         }
 
-        // 3. Overwrite / merge with live Firestore documents
-        firestoreTs.forEach(ts => { if (ts && ts.id) map.set(ts.id, ts); });
-
-        const merged = Array.from(map.values());
-        try {
-          localStorage.setItem('derm_timesheets_store', JSON.stringify(merged));
-        } catch (e) {
-          // ignore error
+        if (data && data.clockIn) {
+          firestoreTs.push({ ...data, id });
         }
-
-        // 4. Auto-save any local records that weren't in Firestore yet
-        const remoteIds = new Set(firestoreTs.map(t => t.id));
-        merged.forEach(async (localTs) => {
-          if (!remoteIds.has(localTs.id)) {
-            try {
-              await setDoc(docRef('timesheets', localTs.id), sanitizeForFirestore(localTs));
-            } catch (err) {
-              console.warn("Auto-syncing cached timesheet to Firestore:", err);
-            }
-          }
-        });
-
-        return merged;
       });
+
+      // Sort newest clock-ins first
+      firestoreTs.sort((a, b) => (b.clockIn || '').localeCompare(a.clockIn || ''));
+
+      // Set authoritative list directly from Firestore
+      setTimesheets(firestoreTs);
+
+      try {
+        localStorage.setItem(`derm_timesheets_store_${currentEnv}`, JSON.stringify(firestoreTs));
+        localStorage.setItem('derm_timesheets_store', JSON.stringify(firestoreTs));
+      } catch (e) {
+        // ignore error
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'timesheets');
     });
@@ -531,8 +616,8 @@ export default function App() {
   // Handle register from Kiosk
   const handlePatientRegister = async (newPatientData: Omit<Patient, 'id' | 'arrivalTime' | 'arrivalDate' | 'waitingRoom' | 'status'>) => {
     const now = new Date();
-    const timeStr = now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = formatBelgianTimeHMS(now);
+    const dateStr = getBelgianDateString(now);
 
     const doctor = doctors.find(d => d.id === newPatientData.doctorId);
     const isNurse = (doctor?.id === 'nurse-verpleegkundige') || (newPatientData.doctorName?.toLowerCase().includes('verpleegkundige'));
@@ -557,7 +642,7 @@ export default function App() {
   // Dispatch MS Teams Notification & Save
   const handleTeamsNotify = async (messageText: string, target?: string, payload?: any): Promise<boolean> => {
     const now = new Date();
-    const timeStr = now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const timeStr = formatBelgianTimeHMS(now);
     
     const newLogItem: TeamsNotification = {
       id: `notif-${Date.now()}`,
@@ -734,11 +819,16 @@ export default function App() {
   };
 
   const handleUpdateTimesheet = async (timesheet: Timesheet) => {
-    // 1. Instantly update local state and localStorage for zero-latency, unbreakable persistence
+    // 0. If this timesheet was previously marked deleted, unmark it
+    unmarkDeletedTimesheetId(timesheet.id);
+
+    // 1. Instantly update local state and localStorage
     setTimesheets(prev => {
       const next = prev.filter(t => t.id !== timesheet.id);
       next.push(timesheet);
+      next.sort((a, b) => (b.clockIn || '').localeCompare(a.clockIn || ''));
       try {
+        localStorage.setItem(`derm_timesheets_store_${currentEnv}`, JSON.stringify(next));
         localStorage.setItem('derm_timesheets_store', JSON.stringify(next));
       } catch (e) {
         // ignore error
@@ -755,10 +845,14 @@ export default function App() {
   };
 
   const handleDeleteTimesheet = async (id: string) => {
-    // 1. Instantly update local state and localStorage
+    // 1. Record in tombstones so no background tab or snapshot can ever resurrect it
+    recordDeletedTimesheetId(id);
+
+    // 2. Instantly update local state and localStorage
     setTimesheets(prev => {
       const next = prev.filter(t => t.id !== id);
       try {
+        localStorage.setItem(`derm_timesheets_store_${currentEnv}`, JSON.stringify(next));
         localStorage.setItem('derm_timesheets_store', JSON.stringify(next));
       } catch (e) {
         // ignore error
@@ -766,24 +860,32 @@ export default function App() {
       return next;
     });
 
-    // 2. Delete from Firestore database
+    // 3. Delete permanently from Firestore database across active, prod and test collections
     try {
-      await deleteDoc(docRef('timesheets', id));
+      await Promise.allSettled([
+        deleteDoc(docRef('timesheets', id)),
+        deleteDoc(doc(db, 'timesheets', id)),
+        deleteDoc(doc(db, 'test_timesheets', id))
+      ]);
     } catch (err) {
       console.error("Error deleting timesheet in firestore:", err);
     }
   };
 
   const handleRestoreTimesheets = async (restoredList: Timesheet[]): Promise<void> => {
-    // 1. Update state & localStorage
+    // 1. Clear tombstones for restored IDs
+    restoredList.forEach(ts => unmarkDeletedTimesheetId(ts.id));
+
+    // 2. Update state & localStorage
     setTimesheets(restoredList);
     try {
+      localStorage.setItem(`derm_timesheets_store_${currentEnv}`, JSON.stringify(restoredList));
       localStorage.setItem('derm_timesheets_store', JSON.stringify(restoredList));
     } catch (e) {
       // ignore
     }
 
-    // 2. Overwrite in Firestore
+    // 3. Overwrite in Firestore
     try {
       const batch = writeBatch(db);
       const existingSnap = await getDocs(col('timesheets'));
@@ -858,7 +960,7 @@ export default function App() {
     const now = new Date();
     const offset = Math.random() > 0.5 ? 15 : -15; 
     now.setMinutes(now.getMinutes() + offset);
-    const mockApptHour = now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' });
+    const mockApptHour = formatBelgianTimeHM(now);
     const mockReg = `${Math.floor(Math.random() * 25 + 75)}.06.14-${Math.floor(Math.random() * 800 + 100)}.${Math.floor(Math.random() * 80 + 10)}`;
 
     const isNew = Math.random() > 0.4;

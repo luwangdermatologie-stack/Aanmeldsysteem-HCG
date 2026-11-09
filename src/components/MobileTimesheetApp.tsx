@@ -30,10 +30,20 @@ import {
   X,
   ExternalLink,
   Wifi,
-  WifiOff
+  WifiOff,
+  Trash2
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { getDetectedEnvironment } from '../config/environment';
+import { 
+  getBelgianDateString, 
+  formatBelgianTimeHM, 
+  formatBelgianTimeHMS, 
+  getBelgianHour, 
+  parseBelgianDateTimeToIso, 
+  formatBelgianFullDate, 
+  formatBelgianShortDate 
+} from '../services/belgianTime';
 
 interface MobileTimesheetAppProps {
   activeStaffList: ActiveStaff[];
@@ -154,9 +164,9 @@ export default function MobileTimesheetApp({
     return () => clearInterval(timer);
   }, []);
 
-  // Format today's date string: YYYY-MM-DD
+  // Format today's date string: YYYY-MM-DD in Belgian local time
   const todayStr = useMemo(() => {
-    return currentTime.toISOString().slice(0, 10);
+    return getBelgianDateString(currentTime);
   }, [currentTime]);
 
   // Network connection state
@@ -256,12 +266,13 @@ export default function MobileTimesheetApp({
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
   }, []);
 
-  // Compute direct smartphone link URL
+  // Compute direct smartphone link URL (with environment parameter to keep phone and PC aligned)
   const mobileAppUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
     const base = window.location.origin + window.location.pathname;
-    return `${base}?view=tiktijden`;
-  }, []);
+    const envParam = currentEnv ? `&env=${currentEnv}` : '';
+    return `${base}?view=tiktijden${envParam}`;
+  }, [currentEnv]);
 
   // Generate QR code when share modal opens
   useEffect(() => {
@@ -287,7 +298,8 @@ export default function MobileTimesheetApp({
     }
 
     const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10);
+    const dateStr = getBelgianDateString(now);
+    const timeHM = formatBelgianTimeHM(now);
     const newTimesheet: Timesheet = {
       id: `ts-${Date.now()}`,
       staffId: currentStaff.id,
@@ -300,7 +312,7 @@ export default function MobileTimesheetApp({
     playMobileSound('in');
     try {
       await onUpdateTimesheet(newTimesheet);
-      showToast(`✓ Goedemorgen ${currentStaff.name}! Je bent succesvol ingeklokt om ${now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}.`, 'success');
+      showToast(`✓ Goedemorgen ${currentStaff.name}! Je bent succesvol ingeklokt om ${timeHM}.`, 'success');
     } catch (err) {
       console.error("Error clocking in:", err);
       showToast("Fout bij inklokken. Controleer uw internetverbinding.", "error");
@@ -316,6 +328,7 @@ export default function MobileTimesheetApp({
     }
 
     const now = new Date();
+    const timeHM = formatBelgianTimeHM(now);
     const updatedTimesheet: Timesheet = {
       ...activeOpenTimesheet,
       clockOut: now.toISOString()
@@ -324,7 +337,7 @@ export default function MobileTimesheetApp({
     playMobileSound('out');
     try {
       await onUpdateTimesheet(updatedTimesheet);
-      showToast(`✓ Prettige dag ${currentStaff.name}! Je bent uitgeklokt om ${now.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}.`, 'success');
+      showToast(`✓ Prettige dag ${currentStaff.name}! Je bent uitgeklokt om ${timeHM}.`, 'success');
     } catch (err) {
       console.error("Error clocking out:", err);
       showToast("Fout bij uitklokken. Controleer uw verbinding.", "error");
@@ -348,8 +361,8 @@ export default function MobileTimesheetApp({
       id: `ts-${Date.now()}`,
       staffId: currentStaff.id,
       staffName: currentStaff.name,
-      clockIn: new Date(`${manualDate}T${manualIn}`).toISOString(),
-      clockOut: manualOut ? new Date(`${manualDate}T${manualOut}`).toISOString() : null,
+      clockIn: parseBelgianDateTimeToIso(manualDate, manualIn),
+      clockOut: manualOut ? parseBelgianDateTimeToIso(manualDate, manualOut) : null,
       date: manualDate
     };
 
@@ -389,30 +402,19 @@ export default function MobileTimesheetApp({
     }
   };
 
-  // Format hours/minutes for date
+  // Format hours/minutes in Belgian local time
   const formatTimeHM = (isoStr?: string | null) => {
-    if (!isoStr) return '--:--';
-    try {
-      const d = new Date(isoStr);
-      return d.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return '--:--';
-    }
+    return formatBelgianTimeHM(isoStr);
   };
 
-  // Format full date in Dutch
+  // Format full date in Dutch in Belgian local time
   const fullDateString = useMemo(() => {
-    return currentTime.toLocaleDateString('nl-BE', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    });
+    return formatBelgianFullDate(currentTime);
   }, [currentTime]);
 
-  // Greeting based on time of day
+  // Greeting based on Belgian hour
   const greetingText = useMemo(() => {
-    const hour = currentTime.getHours();
+    const hour = getBelgianHour(currentTime);
     if (hour < 12) return 'Goedemorgen';
     if (hour < 18) return 'Goedemiddag';
     return 'Goedenavond';
@@ -551,53 +553,6 @@ export default function MobileTimesheetApp({
           </button>
         </div>
 
-        {/* TAB NAVIGATION */}
-        <div className="grid grid-cols-3 gap-1 bg-slate-800/60 p-1 rounded-2xl border border-slate-800 mb-4">
-          <button
-            onClick={() => {
-              playMobileSound('tap');
-              setMobileTab('clock');
-            }}
-            className={`py-2 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 ${
-              mobileTab === 'clock' 
-                ? 'bg-indigo-600 text-white shadow-md' 
-                : 'text-slate-400 hover:text-white hover:bg-slate-700/40'
-            }`}
-          >
-            <Clock className="h-3.5 w-3.5" />
-            <span>Tikklok</span>
-          </button>
-
-          <button
-            onClick={() => {
-              playMobileSound('tap');
-              setMobileTab('history');
-            }}
-            className={`py-2 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 ${
-              mobileTab === 'history' 
-                ? 'bg-indigo-600 text-white shadow-md' 
-                : 'text-slate-400 hover:text-white hover:bg-slate-700/40'
-            }`}
-          >
-            <History className="h-3.5 w-3.5" />
-            <span>Mijn Uren</span>
-          </button>
-
-          <button
-            onClick={() => {
-              playMobileSound('tap');
-              setMobileTab('team');
-            }}
-            className={`py-2 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 ${
-              mobileTab === 'team' 
-                ? 'bg-indigo-600 text-white shadow-md' 
-                : 'text-slate-400 hover:text-white hover:bg-slate-700/40'
-            }`}
-          >
-            <Users className="h-3.5 w-3.5" />
-            <span>Collega's</span>
-          </button>
-        </div>
 
         {/* TAB 1: DE SNELLE 1-KLIK TIKKLOK */}
         {mobileTab === 'clock' && (
@@ -609,7 +564,7 @@ export default function MobileTimesheetApp({
                 {fullDateString}
               </div>
               <div className="font-mono text-4xl sm:text-5xl font-black tracking-tight text-white drop-shadow-sm">
-                {currentTime.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                {formatBelgianTimeHMS(currentTime)}
               </div>
               <div className="mt-2 text-xs font-medium text-slate-400">
                 {greetingText}, <span className="font-bold text-slate-200">{currentStaff?.name || 'collega'}</span>
@@ -667,13 +622,6 @@ export default function MobileTimesheetApp({
                 </button>
               )}
 
-              {/* TODAY'S TOTAL SUMMARY */}
-              <div className="mt-5 pt-4 border-t border-slate-700/60 flex items-center justify-between text-xs">
-                <span className="text-slate-400 font-medium">Totaal gewerkt vandaag:</span>
-                <span className="font-extrabold text-white font-mono text-sm px-2.5 py-1 bg-slate-800 rounded-lg border border-slate-700">
-                  {totalWorkedTodayFormatted}
-                </span>
-              </div>
             </div>
 
             {/* TODAY'S SESSIONS LIST */}
@@ -717,9 +665,25 @@ export default function MobileTimesheetApp({
                           <span className="text-slate-500">→</span>
                           <span className="font-mono font-bold text-slate-200">{outHM}</span>
                         </div>
-                        <span className="text-[11px] font-semibold text-slate-400">
-                          {ts.clockOut ? 'Voltooid' : 'Actief'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-semibold text-slate-400">
+                            {ts.clockOut ? 'Voltooid' : 'Actief'}
+                          </span>
+                          {onDeleteTimesheet && (
+                            <button
+                              onClick={() => {
+                                if (confirm(`Tiktijd (${inHM} - ${outHM}) verwijderen?`)) {
+                                  onDeleteTimesheet(ts.id);
+                                  showToast("Tiktijd verwijderd.", "success");
+                                }
+                              }}
+                              className="p-1 text-slate-500 hover:text-red-400 rounded transition cursor-pointer"
+                              title="Tiktijd verwijderen"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -779,11 +743,7 @@ export default function MobileTimesheetApp({
               <div className="space-y-2.5">
                 {staffHistory.slice(0, 30).map(ts => {
                   const dateObj = new Date(ts.clockIn);
-                  const dateDisplay = dateObj.toLocaleDateString('nl-BE', {
-                    weekday: 'short',
-                    day: 'numeric',
-                    month: 'short'
-                  });
+                  const dateDisplay = formatBelgianShortDate(ts.clockIn);
                   const inHM = formatTimeHM(ts.clockIn);
                   const outHM = ts.clockOut ? formatTimeHM(ts.clockOut) : 'Actief';
 
@@ -808,13 +768,29 @@ export default function MobileTimesheetApp({
                         </div>
                       </div>
 
-                      <div className="text-right">
-                        <div className="font-mono font-bold text-indigo-300">{durStr}</div>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                          ts.clockOut ? 'bg-slate-700 text-slate-300' : 'bg-emerald-500/20 text-emerald-300'
-                        }`}>
-                          {ts.clockOut ? 'Voltooid' : 'Nog ingeklokt'}
-                        </span>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <div className="font-mono font-bold text-indigo-300">{durStr}</div>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                            ts.clockOut ? 'bg-slate-700 text-slate-300' : 'bg-emerald-500/20 text-emerald-300'
+                          }`}>
+                            {ts.clockOut ? 'Voltooid' : 'Nog ingeklokt'}
+                          </span>
+                        </div>
+                        {onDeleteTimesheet && (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Tiktijd van ${dateDisplay} (${inHM}) definitief verwijderen?`)) {
+                                onDeleteTimesheet(ts.id);
+                                showToast("Tiktijd verwijderd.", "success");
+                              }
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-red-400 rounded-lg hover:bg-slate-700/60 transition cursor-pointer"
+                            title="Tiktijd verwijderen"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
